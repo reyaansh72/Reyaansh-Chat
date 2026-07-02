@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "896451120275",
+    "project_id": "dontcheckme",
+    "storage_bucket": "dontcheckme.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:896451120275:android:3c229feaaf8dbe803c1166",
+        "android_client_info": {
+          "package_name": "com.example.chat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDRwL04avAWC0NPXmLeYQsIAYOEyBq50dI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
