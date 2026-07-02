@@ -32,7 +32,7 @@
 
 ```bash
 # Clone the repo
-git clone https://github.com/your-username/Reyaansh-Chat.git
+git clone https://github.com/reyaansh72/Reyaansh-Chat.git
 cd Reyaansh-Chat
 
 # Get dependencies
