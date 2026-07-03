@@ -3,39 +3,80 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
 
 void main() async {
   // 1. Finalizes low-level platform channels and loops
   AppInitializer.setupHardwareAcceleration();
 
-  // 2. Initialise the native Firebase core engine architecture
+  // 2. Initialize SharedPreferences for session persistence
+  await EnterpriseSession.initializePreferences();
+
+  // 3. Initialise the native Firebase core engine architecture
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // 3. Mount and build the Material 3 app workspace tree
+  // 4. Mount and build the Material 3 app workspace tree
   runApp(const ReyaanshCoreApp());
 }
 
 // =========================================================================
-// 1. GLOBAL SESSION STATE (ONE-TIME LOGIN CONFIG)
+// 1. GLOBAL SESSION STATE (ONE-TIME LOGIN CONFIG WITH PERSISTENCE)
 // =========================================================================
 
 class EnterpriseSession {
   static String userId = '';
   static String username = '';
   static String avatarUrl = '';
+  static late SharedPreferences _prefs;
 
-  static void initialize(String name, String avatar) {
-    // Generate a unique session ID for the user to distinguish 'me' from 'others'
-    userId =
-        '${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(10000)}';
+  // Initialize SharedPreferences
+  static Future<void> initializePreferences() async {
+    _prefs = await SharedPreferences.getInstance();
+    _loadFromPreferences();
+  }
+
+  // Load session data from SharedPreferences
+  static void _loadFromPreferences() {
+    userId = _prefs.getString('userId') ?? '';
+    username = _prefs.getString('username') ?? '';
+    avatarUrl = _prefs.getString('avatarUrl') ?? '';
+  }
+
+  // Initialize session and persist to SharedPreferences
+  static Future<void> initialize(String name, String avatar) async {
+    // Generate a unique session ID only if this is the first login
+    if (userId.isEmpty) {
+      userId =
+          '${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(10000)}';
+    }
     username = name;
     avatarUrl = avatar;
+
+    // Persist to SharedPreferences
+    await _prefs.setString('userId', userId);
+    await _prefs.setString('username', username);
+    await _prefs.setString('avatarUrl', avatarUrl);
+  }
+
+  // Check if user is logged in
+  static bool isLoggedIn() {
+    return userId.isNotEmpty && username.isNotEmpty;
+  }
+
+  // Logout and clear session data
+  static Future<void> logout() async {
+    userId = '';
+    username = '';
+    avatarUrl = '';
+    await _prefs.remove('userId');
+    await _prefs.remove('username');
+    await _prefs.remove('avatarUrl');
   }
 }
 
 // =========================================================================
-// 2. MASTER BRANDING & MATERIAL 3 THEME CONFIGURATION
+// 2. MASTER BRANDING & MATERIAL 3 THEME CONFIGURATION WITH AUTO-LOGIN
 // =========================================================================
 
 class ReyaanshCoreApp extends StatelessWidget {
@@ -59,7 +100,9 @@ class ReyaanshCoreApp extends StatelessWidget {
           labelSmall: TextStyle(fontSize: 11.0, color: Colors.grey),
         ),
       ),
-      home: const LoginScreen(),
+      home: EnterpriseSession.isLoggedIn()
+          ? const ChatDashboard()
+          : const LoginScreen(),
     );
   }
 }
@@ -79,6 +122,14 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _avatarUrlController = TextEditingController();
 
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fill with saved data if available
+    _usernameController.text = EnterpriseSession.username;
+    _avatarUrlController.text = EnterpriseSession.avatarUrl;
+  }
+
   void _performLogin() {
     final name = _usernameController.text.trim();
     final avatar = _avatarUrlController.text.trim();
@@ -92,12 +143,24 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    EnterpriseSession.initialize(name, avatar);
+    EnterpriseSession.initialize(name, avatar).then((_) {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const ChatDashboard()),
+        );
+      }
+    });
+  }
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const ChatDashboard()),
-    );
+  Future<void> _performLogout() async {
+    await EnterpriseSession.logout();
+    if (mounted) {
+      _usernameController.clear();
+      _avatarUrlController.clear();
+      setState(() {});
+      AlertBridge.showNotification(context, "Logged out successfully.");
+    }
   }
 
   @override
@@ -133,7 +196,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Icon(Icons.public, size: 64, color: colors.primary),
                     const WidgetSpacer(height: 16),
                     Text(
-                      'Test',
+                      'Reyaansh Chat',
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(
                             fontWeight: FontWeight.bold,
@@ -143,7 +206,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const WidgetSpacer(height: 8),
                     Text(
-                      'Set up your profile to join the global chat',
+                      EnterpriseSession.isLoggedIn()
+                          ? 'You are logged in. Edit or logout below.'
+                          : 'Set up your profile to join the global chat',
                       style: TextStyle(color: colors.onSurfaceVariant),
                       textAlign: TextAlign.center,
                     ),
@@ -180,15 +245,41 @@ class _LoginScreenState extends State<LoginScreen> {
                             borderRadius: BorderRadius.circular(12.0),
                           ),
                         ),
-                        child: const Text(
-                          'Join Chat',
-                          style: TextStyle(
+                        child: Text(
+                          EnterpriseSession.isLoggedIn()
+                              ? 'Update Profile & Chat'
+                              : 'Join Chat',
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
                     ),
+                    if (EnterpriseSession.isLoggedIn()) ...[
+                      const WidgetSpacer(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: _performLogout,
+                          style: OutlinedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12.0),
+                            ),
+                            side: BorderSide(color: colors.error),
+                          ),
+                          child: Text(
+                            'Logout',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: colors.error,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -315,6 +406,16 @@ class _ChatDashboardState extends State<ChatDashboard> {
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
 
+    void handleLogout() async {
+      await EnterpriseSession.logout();
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+        );
+      }
+    }
+
     return Scaffold(
       backgroundColor: colors.surfaceContainerHigh,
       appBar: AppBar(
@@ -327,7 +428,7 @@ class _ChatDashboardState extends State<ChatDashboard> {
         elevation: 1,
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 16.0),
+            padding: const EdgeInsets.only(right: 8.0),
             child: Chip(
               avatar: UserAvatarWidget(
                 url: EnterpriseSession.avatarUrl,
@@ -336,6 +437,19 @@ class _ChatDashboardState extends State<ChatDashboard> {
               label: Text(EnterpriseSession.username),
               backgroundColor: colors.surface,
               side: BorderSide.none,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: Center(
+              child: Tooltip(
+                message: 'Logout',
+                child: TouchFeedbackEnhancer(
+                  onTap: handleLogout,
+                  borderRadius: BorderRadius.circular(4.0),
+                  child: Icon(Icons.logout, color: colors.onPrimaryContainer),
+                ),
+              ),
             ),
           ),
         ],
@@ -563,8 +677,9 @@ class MultiMediaMessageEngine extends StatelessWidget {
                                   },
                                   loadingBuilder:
                                       (context, child, loadingProgress) {
-                                        if (loadingProgress == null)
+                                        if (loadingProgress == null) {
                                           return child;
+                                        }
                                         return Container(
                                           height: 150,
                                           width: 200,

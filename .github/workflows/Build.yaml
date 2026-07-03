@@ -1,0 +1,83 @@
+name: 🚀 Build & Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ☕ Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: 🐦 Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: 📦 Get packages
+        run: flutter pub get
+
+      - name: 🌐 Build Web
+        run: flutter build web --release
+
+      - name: 🤖 Build Android APK
+        run: flutter build apk --release
+
+      - name: 📁 Package artifacts
+        run: |
+          mkdir artifacts
+
+          cd build/web
+          zip -r ../../artifacts/Reyaansh-Chat-Web.zip .
+          cd ../..
+
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             artifacts/Reyaansh-Chat-Android.apk
+
+      - name: 🏷 Generate next version
+        id: version
+        run: |
+          git fetch --tags
+
+          LAST_TAG=$(git tag -l "v*" | sed 's/v//' | sort -n | tail -1)
+
+          if [ -z "$LAST_TAG" ]; then
+            NEXT=1
+          else
+            NEXT=$((LAST_TAG + 1))
+          fi
+
+          TAG="v$NEXT"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag "$TAG"
+          git push origin "$TAG"
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: 🚀 Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: |
+            artifacts/Reyaansh-Chat-Web.zip
+            artifacts/Reyaansh-Chat-Android.apk
