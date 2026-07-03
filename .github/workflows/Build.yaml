@@ -60,7 +60,7 @@ jobs:
           if [ -z "$LAST_TAG" ]; then
             NEXT=1
           else
-            NEXT=$((LAST_TAG + 1))
+            NEXT=$((LAST_TAG + .1))
           fi
 
           TAG="v$NEXT"
