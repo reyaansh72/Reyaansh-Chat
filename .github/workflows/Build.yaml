@@ -53,14 +53,31 @@ jobs:
       - name: 🏷 Generate next version
         id: version
         run: |
+          #!/usr/bin/env bash
+          set -euo pipefail
+
           git fetch --tags
 
-          LAST_TAG=$(git tag -l "v*" | sed 's/v//' | sort -n | tail -1)
+          # Get the highest existing version (strip leading "v").
+          # Supports tags like v1.0, v1.1, v1.2.3 etc.
+          LAST_TAG=$(git tag -l "v*" | sed 's/^v//' | sort -V | tail -n 1 || true)
 
           if [ -z "$LAST_TAG" ]; then
-            NEXT=1
+            NEXT="1"
           else
-            NEXT=$((LAST_TAG + 1))
+            # Split version into components and increment the last numeric component
+            IFS='.' read -r -a parts <<< "$LAST_TAG"
+            last_index=$(( ${#parts[@]} - 1 ))
+
+            # Ensure the last part is numeric; if not, fallback to appending .1
+            if [[ "${parts[$last_index]}" =~ ^[0-9]+$ ]]; then
+              parts[$last_index]=$(( parts[$last_index] + 1 ))
+              # Rejoin parts with dots
+              NEXT=$(IFS=.; echo "${parts[*]}")
+            else
+              # Non-numeric last part -> just append ".1"
+              NEXT="${LAST_TAG}.1"
+            fi
           fi
 
           TAG="v$NEXT"
@@ -68,8 +85,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git tag "$TAG"
-          git push origin "$TAG"
+          # If the tag already exists (race / repeated runs), skip creating it to avoid failing the job
+          if git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists; skipping tag creation."
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
