@@ -36,7 +36,7 @@ jobs:
         run: flutter pub get
 
       - name: 🌐 Build Web
-        run: flutter build web --release
+        run: flutter build web --release --base-href /Reyaansh-Chat/
 
       - name: 🤖 Build Android APK
         run: flutter build apk --release
