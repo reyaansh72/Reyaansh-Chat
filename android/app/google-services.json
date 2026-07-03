@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "896451120275",
+    "firebase_url": "https://dontcheckme-default-rtdb.firebaseio.com",
     "project_id": "dontcheckme",
     "storage_bucket": "dontcheckme.firebasestorage.app"
   },

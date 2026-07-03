@@ -46,8 +46,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '896451120275',
     projectId: 'dontcheckme',
     authDomain: 'dontcheckme.firebaseapp.com',
+    databaseURL: 'https://dontcheckme-default-rtdb.firebaseio.com',
     storageBucket: 'dontcheckme.firebasestorage.app',
-    databaseURL: "https://dontcheckme-default-rtdb.firebaseio.com/",
   );
 
   static const FirebaseOptions android = FirebaseOptions(
@@ -55,8 +55,8 @@ class DefaultFirebaseOptions {
     appId: '1:896451120275:android:3c229feaaf8dbe803c1166',
     messagingSenderId: '896451120275',
     projectId: 'dontcheckme',
+    databaseURL: 'https://dontcheckme-default-rtdb.firebaseio.com',
     storageBucket: 'dontcheckme.firebasestorage.app',
-    databaseURL: "https://dontcheckme-default-rtdb.firebaseio.com/",
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
@@ -64,8 +64,8 @@ class DefaultFirebaseOptions {
     appId: '1:896451120275:ios:e7b2068bcd4cd65e3c1166',
     messagingSenderId: '896451120275',
     projectId: 'dontcheckme',
+    databaseURL: 'https://dontcheckme-default-rtdb.firebaseio.com',
     storageBucket: 'dontcheckme.firebasestorage.app',
-    databaseURL: "https://dontcheckme-default-rtdb.firebaseio.com/",
     iosBundleId: 'com.example.chat',
   );
 
@@ -74,8 +74,8 @@ class DefaultFirebaseOptions {
     appId: '1:896451120275:ios:e7b2068bcd4cd65e3c1166',
     messagingSenderId: '896451120275',
     projectId: 'dontcheckme',
+    databaseURL: 'https://dontcheckme-default-rtdb.firebaseio.com',
     storageBucket: 'dontcheckme.firebasestorage.app',
-    databaseURL: "https://dontcheckme-default-rtdb.firebaseio.com/",
     iosBundleId: 'com.example.chat',
   );
 
@@ -85,7 +85,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '896451120275',
     projectId: 'dontcheckme',
     authDomain: 'dontcheckme.firebaseapp.com',
+    databaseURL: 'https://dontcheckme-default-rtdb.firebaseio.com',
     storageBucket: 'dontcheckme.firebasestorage.app',
-    databaseURL: "https://dontcheckme-default-rtdb.firebaseio.com/",
   );
 }
