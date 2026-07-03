@@ -29,6 +29,9 @@ class EnterpriseSession {
   static String username = '';
   static String avatarUrl = '';
   static late SharedPreferences _prefs;
+  static Color themeSeedColor = const Color.fromARGB(255, 46, 154, 124);
+  static final ValueNotifier<Color> themeSeedColorNotifier =
+      ValueNotifier<Color>(themeSeedColor);
 
   // Initialize SharedPreferences
   static Future<void> initializePreferences() async {
@@ -41,6 +44,11 @@ class EnterpriseSession {
     userId = _prefs.getString('userId') ?? '';
     username = _prefs.getString('username') ?? '';
     avatarUrl = _prefs.getString('avatarUrl') ?? '';
+
+    themeSeedColor = Color(
+      _prefs.getInt('themeSeedColor') ?? themeSeedColor.toARGB32(),
+    );
+    themeSeedColorNotifier.value = themeSeedColor;
   }
 
   // Initialize session and persist to SharedPreferences
@@ -59,6 +67,14 @@ class EnterpriseSession {
     await _prefs.setString('avatarUrl', avatarUrl);
   }
 
+  static Color get themeSeed => themeSeedColorNotifier.value;
+
+  static Future<void> setThemeSeedColor(Color color) async {
+    themeSeedColor = color;
+    themeSeedColorNotifier.value = color;
+    await _prefs.setInt('themeSeedColor', color.toARGB32());
+  }
+
   // Check if user is logged in
   static bool isLoggedIn() {
     return userId.isNotEmpty && username.isNotEmpty;
@@ -75,32 +91,158 @@ class EnterpriseSession {
   }
 }
 
+class ThemeColorPicker {
+  static const List<Color> palette = [
+    Colors.amber,
+    Colors.blue,
+    Colors.teal,
+    Colors.purple,
+    Colors.green,
+    Colors.orange,
+    Colors.indigo,
+    Colors.pink,
+    Colors.cyan,
+    Colors.lime,
+    Colors.deepOrange,
+    Colors.deepPurple,
+    Colors.lightBlue,
+    Colors.lightGreen,
+    Colors.yellow,
+    Colors.red,
+    Colors.brown,
+    Colors.blueGrey,
+    Colors.grey,
+  ];
+
+  static Future<void> open(BuildContext context) async {
+    final selectedColor = await showModalBottomSheet<Color>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24.0)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Pick app color',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12.0),
+              Wrap(
+                spacing: 12.0,
+                runSpacing: 12.0,
+                children: palette.map((color) {
+                  final bool isSelected =
+                      color.toARGB32() ==
+                      EnterpriseSession.themeSeed.toARGB32();
+                  return GestureDetector(
+                    onTap: () => Navigator.of(context).pop(color),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        border: isSelected
+                            ? Border.all(color: Colors.white, width: 3.0)
+                            : null,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.10),
+                            blurRadius: 8.0,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: isSelected
+                          ? const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 24,
+                            )
+                          : null,
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 20.0),
+              Center(
+                child: Text(
+                  'Your selection is saved automatically.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (selectedColor != null) {
+      await EnterpriseSession.setThemeSeedColor(selectedColor);
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Theme color updated.'),
+          backgroundColor: selectedColor,
+        ),
+      );
+    }
+  }
+}
+
 // =========================================================================
 // 2. MASTER BRANDING & MATERIAL 3 THEME CONFIGURATION WITH AUTO-LOGIN
 // =========================================================================
 
-class ReyaanshCoreApp extends StatelessWidget {
+class ReyaanshCoreApp extends StatefulWidget {
   const ReyaanshCoreApp({super.key});
 
   @override
+  State<ReyaanshCoreApp> createState() => _ReyaanshCoreAppState();
+}
+
+class _ReyaanshCoreAppState extends State<ReyaanshCoreApp> {
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Reyaansh Chat',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.light,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFCDDC39), // High-vibrancy Lime-Yellowish
-          brightness: Brightness.light,
-        ).copyWith(surfaceContainerHigh: const Color(0xFFF4F6E7)),
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(fontSize: 16.0, fontWeight: FontWeight.normal),
-          bodyMedium: TextStyle(fontSize: 14.0, fontWeight: FontWeight.normal),
-          labelSmall: TextStyle(fontSize: 11.0, color: Colors.grey),
-        ),
-      ),
-      home: EnterpriseSession.isLoggedIn()
+    return ValueListenableBuilder<Color>(
+      valueListenable: EnterpriseSession.themeSeedColorNotifier,
+      builder: (context, seedColor, child) {
+        return MaterialApp(
+          title: 'Reyaansh Chat',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            useMaterial3: true,
+            brightness: Brightness.light,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: seedColor,
+              brightness: Brightness.light,
+            ).copyWith(surfaceContainerHigh: const Color(0xFFF4F6E7)),
+            textTheme: const TextTheme(
+              bodyLarge: TextStyle(
+                fontSize: 16.0,
+                fontWeight: FontWeight.normal,
+              ),
+              bodyMedium: TextStyle(
+                fontSize: 14.0,
+                fontWeight: FontWeight.normal,
+              ),
+              labelSmall: TextStyle(fontSize: 11.0, color: Colors.grey),
+            ),
+          ),
+          home: child,
+        );
+      },
+      child: EnterpriseSession.isLoggedIn()
           ? const ChatDashboard()
           : const LoginScreen(),
     );
@@ -212,7 +354,46 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(color: colors.onSurfaceVariant),
                       textAlign: TextAlign.center,
                     ),
-                    const WidgetSpacer(height: 32),
+                    const WidgetSpacer(height: 24),
+                    InkWell(
+                      onTap: () => ThemeColorPicker.open(context),
+                      borderRadius: BorderRadius.circular(12.0),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16.0,
+                          vertical: 14.0,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(12.0),
+                          border: Border.all(color: colors.outlineVariant),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.format_paint),
+                            const SizedBox(width: 12.0),
+                            Expanded(
+                              child: Text(
+                                'Theme Accent Color',
+                                style: TextStyle(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                            CircleAvatar(
+                              radius: 16,
+                              backgroundColor: EnterpriseSession.themeSeed,
+                              child: const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const WidgetSpacer(height: 20),
                     TextField(
                       controller: _usernameController,
                       decoration: InputDecoration(
@@ -468,6 +649,12 @@ class _ChatDashboardState extends State<ChatDashboard> {
         foregroundColor: colors.onPrimaryContainer,
         elevation: 1,
         actions: [
+          IconButton(
+            onPressed: () => ThemeColorPicker.open(context),
+            icon: const Icon(Icons.format_paint),
+            color: colors.onPrimaryContainer,
+            tooltip: 'Pick theme color',
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
             child: Chip(
@@ -933,26 +1120,40 @@ class EmoteContextActionWrapper extends StatelessWidget {
                 padding: const EdgeInsets.all(16.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: ['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emote) {
-                    return TouchFeedbackEnhancer(
-                      onTap: () async {
-                        Navigator.pop(context);
-                        await ReactionManager.addReaction(messageId, emote);
-                        AlertBridge.showNotification(
-                          context,
-                          "Reacted with $emote",
+                  children:
+                      [
+                        '👍',
+                        '❤️',
+                        '😂',
+                        '😮',
+                        '😢',
+                        '🙏',
+                        '🔥',
+                        '👏',
+                        '😍',
+                        '🤣',
+                        '😊',
+                        '😎',
+                      ].map((emote) {
+                        return TouchFeedbackEnhancer(
+                          onTap: () async {
+                            Navigator.pop(context);
+                            await ReactionManager.addReaction(messageId, emote);
+                            AlertBridge.showNotification(
+                              context,
+                              "Reacted with $emote",
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(24),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text(
+                              emote,
+                              style: const TextStyle(fontSize: 24),
+                            ),
+                          ),
                         );
-                      },
-                      borderRadius: BorderRadius.circular(24),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Text(
-                          emote,
-                          style: const TextStyle(fontSize: 24),
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                      }).toList(),
                 ),
               ),
               const Divider(height: 1),
