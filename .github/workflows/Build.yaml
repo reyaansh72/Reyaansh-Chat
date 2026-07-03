@@ -39,12 +39,6 @@ jobs:
       - name: 🤖 Build Android APK
         run: flutter build apk --release
 
-      - name: 🪟 Build Windows
-        run: flutter build windows --release
-
-      - name: 🍎 Build macOS
-        run: flutter build macos --release
-
       - name: 📁 Package artifacts
         run: |
           mkdir -p artifacts
@@ -58,17 +52,7 @@ jobs:
           # Android APK
           cp build/app/outputs/flutter-apk/app-release.apk \
              artifacts/Reyaansh-Chat-v${VERSION}-Android.apk
-
-          # Windows build
-          cd build/windows/runner/Release
-          zip -r ../../../../artifacts/Reyaansh-Chat-v${VERSION}-Windows.zip .
-          cd ../../../../
-
-          # macOS build
-          cd build/macos/Build/Products/Release
-          zip -r ../../../../../artifacts/Reyaansh-Chat-v${VERSION}-macOS.zip *.app
-          cd ../../../../../
-
+             
       - name: 🏷 Generate next version
         id: version
         run: |
