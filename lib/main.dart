@@ -1,8 +1,8 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
 
@@ -303,6 +303,7 @@ class ChatPayload {
   final String senderId;
   final String senderName;
   final String senderAvatarUrl;
+  final Map<String, int> reactions;
 
   const ChatPayload({
     required this.id,
@@ -312,30 +313,68 @@ class ChatPayload {
     required this.senderId,
     required this.senderName,
     required this.senderAvatarUrl,
+    this.reactions = const {},
   });
 
-  factory ChatPayload.fromFirestore(DocumentSnapshot doc) {
-    final Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+  factory ChatPayload.fromRtdb(DataSnapshot snapshot) {
+    final rawData = snapshot.value as Map<dynamic, dynamic>?;
+    final data = rawData == null
+        ? <String, dynamic>{}
+        : rawData.map((key, value) => MapEntry(key.toString(), value));
+
+    final rawReactions = data['reactions'] as Map<dynamic, dynamic>?;
+    final parsedReactions = rawReactions == null
+        ? <String, int>{}
+        : rawReactions.map(
+            (key, value) => MapEntry(key.toString(), (value as num).toInt()),
+          );
+
+    final attachment = data['mediaUrl'];
+
     return ChatPayload(
-      id: doc.id,
-      message: data['text'] ?? '',
-      attachmentUrl: data['mediaUrl'],
-      timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      senderId: data['senderId'] ?? '',
-      senderName: data['senderName'] ?? 'Unknown User',
-      senderAvatarUrl: data['senderAvatarUrl'] ?? '',
+      id: snapshot.key ?? '',
+      message: data['text']?.toString() ?? '',
+      attachmentUrl: attachment is String && attachment.isNotEmpty
+          ? attachment
+          : null,
+      timestamp: _decodeTimestamp(data['timestamp']),
+      senderId: data['senderId']?.toString() ?? '',
+      senderName: data['senderName']?.toString() ?? 'Unknown User',
+      senderAvatarUrl: data['senderAvatarUrl']?.toString() ?? '',
+      reactions: parsedReactions,
     );
   }
 
+  static DateTime _decodeTimestamp(dynamic timestamp) {
+    if (timestamp is int) {
+      return DateTime.fromMillisecondsSinceEpoch(timestamp);
+    }
+    if (timestamp is double) {
+      return DateTime.fromMillisecondsSinceEpoch(timestamp.toInt());
+    }
+    if (timestamp is String) {
+      final parsed = int.tryParse(timestamp);
+      if (parsed != null) {
+        return DateTime.fromMillisecondsSinceEpoch(parsed);
+      }
+    }
+    return DateTime.now();
+  }
+
   Map<String, dynamic> toMap() {
-    return {
+    final payload = <String, dynamic>{
       'text': message,
       'mediaUrl': attachmentUrl,
-      'timestamp': FieldValue.serverTimestamp(),
+      'timestamp': ServerValue.timestamp,
       'senderId': senderId,
       'senderName': senderName,
       'senderAvatarUrl': senderAvatarUrl,
     };
+
+    if (reactions.isNotEmpty) {
+      payload['reactions'] = reactions;
+    }
+    return payload;
   }
 }
 
@@ -354,15 +393,16 @@ class _ChatDashboardState extends State<ChatDashboard> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  late final Stream<QuerySnapshot> _firestoreStream;
+  late final Stream<DatabaseEvent> _rtdbStream;
+  late final Query _messagesQuery;
 
   @override
   void initState() {
     super.initState();
-    _firestoreStream = FirebaseFirestore.instance
-        .collection('messages')
-        .orderBy('timestamp', descending: false)
-        .snapshots();
+    _messagesQuery = FirebaseDatabase.instance
+        .ref('messages')
+        .orderByChild('timestamp');
+    _rtdbStream = _messagesQuery.onValue;
   }
 
   @override
@@ -385,10 +425,11 @@ class _ChatDashboardState extends State<ChatDashboard> {
   void _handleDispatch(String content, {String? mediaUrl}) {
     if (content.trim().isEmpty && mediaUrl == null) return;
 
-    FirebaseFirestore.instance.collection('messages').add({
+    final reference = FirebaseDatabase.instance.ref('messages').push();
+    reference.set({
       'text': content.trim(),
       'mediaUrl': mediaUrl,
-      'timestamp': FieldValue.serverTimestamp(),
+      'timestamp': ServerValue.timestamp,
       'senderId': EnterpriseSession.userId,
       'senderName': EnterpriseSession.username,
       'senderAvatarUrl': EnterpriseSession.avatarUrl,
@@ -467,8 +508,8 @@ class _ChatDashboardState extends State<ChatDashboard> {
               child: Column(
                 children: [
                   Expanded(
-                    child: StreamBuilder<QuerySnapshot>(
-                      stream: _firestoreStream,
+                    child: StreamBuilder<DatabaseEvent>(
+                      stream: _rtdbStream,
                       builder: (context, snapshot) {
                         if (snapshot.hasError) {
                           return Center(
@@ -482,9 +523,18 @@ class _ChatDashboardState extends State<ChatDashboard> {
                           );
                         }
 
-                        final docs = snapshot.data!.docs;
+                        final event = snapshot.data;
+                        final messages =
+                            event?.snapshot.children
+                                .map((child) => ChatPayload.fromRtdb(child))
+                                .toList() ??
+                            [];
 
-                        if (docs.isEmpty) {
+                        messages.sort(
+                          (a, b) => a.timestamp.compareTo(b.timestamp),
+                        );
+
+                        if (messages.isEmpty) {
                           return Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -514,11 +564,9 @@ class _ChatDashboardState extends State<ChatDashboard> {
                             horizontal: 16.0,
                             vertical: 12.0,
                           ),
-                          itemCount: docs.length,
+                          itemCount: messages.length,
                           itemBuilder: (context, index) {
-                            final payload = ChatPayload.fromFirestore(
-                              docs[index],
-                            );
+                            final payload = messages[index];
                             return MultiMediaMessageEngine(payload: payload);
                           },
                         );
@@ -644,6 +692,7 @@ class MultiMediaMessageEngine extends StatelessWidget {
                     maxWidth: MediaQuery.of(context).size.width * 0.70,
                   ),
                   child: EmoteContextActionWrapper(
+                    messageId: payload.id,
                     messageText: payload.message,
                     child: Card(
                       elevation: 0,
@@ -704,6 +753,39 @@ class MultiMediaMessageEngine extends StatelessWidget {
                                   fontSize: 15.0,
                                 ),
                               ),
+                            if (payload.reactions.isNotEmpty) ...[
+                              const WidgetSpacer(height: 10.0),
+                              Wrap(
+                                spacing: 6.0,
+                                runSpacing: 4.0,
+                                children: payload.reactions.entries.map((
+                                  entry,
+                                ) {
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10.0,
+                                      vertical: 6.0,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isMe
+                                          ? colors.primary.withValues(
+                                              alpha: 0.18,
+                                            )
+                                          : colors.surfaceContainerHighest,
+                                      borderRadius: BorderRadius.circular(18.0),
+                                    ),
+                                    child: Text(
+                                      '${entry.key} ${entry.value}',
+                                      style: TextStyle(
+                                        color: colors.onSurfaceVariant,
+                                        fontSize: 12.0,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -828,11 +910,13 @@ class TouchFeedbackEnhancer extends StatelessWidget {
 
 class EmoteContextActionWrapper extends StatelessWidget {
   final Widget child;
+  final String messageId;
   final String messageText;
 
   const EmoteContextActionWrapper({
     super.key,
     required this.child,
+    required this.messageId,
     required this.messageText,
   });
 
@@ -851,8 +935,9 @@ class EmoteContextActionWrapper extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: ['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emote) {
                     return TouchFeedbackEnhancer(
-                      onTap: () {
+                      onTap: () async {
                         Navigator.pop(context);
+                        await ReactionManager.addReaction(messageId, emote);
                         AlertBridge.showNotification(
                           context,
                           "Reacted with $emote",
@@ -897,7 +982,24 @@ class EmoteContextActionWrapper extends StatelessWidget {
 }
 
 // =========================================================================
-// 10. MEDIA ATTACHMENT PIPELINE & CONTROLLER
+// 10. PERSISTENT REACTION STORAGE FOR RTDB
+// =========================================================================
+
+class ReactionManager {
+  static Future<void> addReaction(String messageId, String emoji) async {
+    final reactionReference = FirebaseDatabase.instance.ref(
+      'messages/$messageId/reactions/$emoji',
+    );
+
+    await reactionReference.runTransaction((currentData) {
+      final currentValue = (currentData as int?) ?? 0;
+      return Transaction.success(currentValue + 1);
+    });
+  }
+}
+
+// =========================================================================
+// 11. MEDIA ATTACHMENT PIPELINE & CONTROLLER
 // =========================================================================
 
 class TransmissionManager {

@@ -47,6 +47,7 @@ class DefaultFirebaseOptions {
     projectId: 'dontcheckme',
     authDomain: 'dontcheckme.firebaseapp.com',
     storageBucket: 'dontcheckme.firebasestorage.app',
+    databaseURL: "https://dontcheckme-default-rtdb.firebaseio.com/",
   );
 
   static const FirebaseOptions android = FirebaseOptions(
@@ -55,6 +56,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '896451120275',
     projectId: 'dontcheckme',
     storageBucket: 'dontcheckme.firebasestorage.app',
+    databaseURL: "https://dontcheckme-default-rtdb.firebaseio.com/",
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
@@ -63,6 +65,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '896451120275',
     projectId: 'dontcheckme',
     storageBucket: 'dontcheckme.firebasestorage.app',
+    databaseURL: "https://dontcheckme-default-rtdb.firebaseio.com/",
     iosBundleId: 'com.example.chat',
   );
 
@@ -72,6 +75,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '896451120275',
     projectId: 'dontcheckme',
     storageBucket: 'dontcheckme.firebasestorage.app',
+    databaseURL: "https://dontcheckme-default-rtdb.firebaseio.com/",
     iosBundleId: 'com.example.chat',
   );
 
@@ -82,5 +86,6 @@ class DefaultFirebaseOptions {
     projectId: 'dontcheckme',
     authDomain: 'dontcheckme.firebaseapp.com',
     storageBucket: 'dontcheckme.firebasestorage.app',
+    databaseURL: "https://dontcheckme-default-rtdb.firebaseio.com/",
   );
 }

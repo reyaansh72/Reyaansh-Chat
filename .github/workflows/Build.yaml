@@ -39,28 +39,48 @@ jobs:
       - name: 🤖 Build Android APK
         run: flutter build apk --release
 
+      - name: 🪟 Build Windows
+        run: flutter build windows --release
+
+      - name: 🍎 Build macOS
+        run: flutter build macos --release
+
       - name: 📁 Package artifacts
         run: |
-          mkdir artifacts
+          mkdir -p artifacts
+          VERSION="${{ steps.version.outputs.version }}"
 
+          # Web build
           cd build/web
-          zip -r ../../artifacts/Reyaansh-Chat-Web.zip .
+          zip -r ../../artifacts/Reyaansh-Chat-v${VERSION}-Web.zip .
           cd ../..
 
+          # Android APK
           cp build/app/outputs/flutter-apk/app-release.apk \
-             artifacts/Reyaansh-Chat-Android.apk
+             artifacts/Reyaansh-Chat-v${VERSION}-Android.apk
+
+          # Windows build
+          cd build/windows/runner/Release
+          zip -r ../../../../artifacts/Reyaansh-Chat-v${VERSION}-Windows.zip .
+          cd ../../../../
+
+          # macOS build
+          cd build/macos/Build/Products/Release
+          zip -r ../../../../../artifacts/Reyaansh-Chat-v${VERSION}-macOS.zip *.app
+          cd ../../../../../
 
       - name: 🏷 Generate next version
         id: version
         run: |
           git fetch --tags
 
-          LAST_TAG=$(git tag -l "v*" | sed 's/v//' | sort -n | tail -1)
+          LAST_TAG=$(git tag -l "v0.*" | sed 's/v//' | sort -V | tail -1)
 
           if [ -z "$LAST_TAG" ]; then
-            NEXT=1
+            NEXT="0.1.0"
           else
-            NEXT=$((LAST_TAG + 1))
+            MINOR=$(echo "$LAST_TAG" | cut -d. -f2)
+            NEXT="0.$((MINOR + 1)).0"
           fi
 
           TAG="v$NEXT"
@@ -72,6 +92,7 @@ jobs:
           git push origin "$TAG"
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
 
       - name: 🚀 Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -79,5 +100,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           generate_release_notes: true
           files: |
-            artifacts/Reyaansh-Chat-Web.zip
-            artifacts/Reyaansh-Chat-Android.apk
+            artifacts/Reyaansh-Chat-v${{ steps.version.outputs.version }}-Web.zip
+            artifacts/Reyaansh-Chat-v${{ steps.version.outputs.version }}-Android.apk
+            artifacts/Reyaansh-Chat-v${{ steps.version.outputs.version }}-Windows.zip
+            artifacts/Reyaansh-Chat-v${{ steps.version.outputs.version }}-macOS.zip
