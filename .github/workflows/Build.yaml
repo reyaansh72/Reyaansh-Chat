@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   release:
@@ -103,3 +105,10 @@ jobs:
           files: |
             artifacts/Reyaansh-Chat-Web.zip
             artifacts/Reyaansh-Chat-Android.apk
+
+      - name: 📤 Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/web
+          cname: reyaansh-chat.github.io
