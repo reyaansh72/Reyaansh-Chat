@@ -1,10 +1,13 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -25,79 +28,6 @@ void main() async {
 // 1. GLOBAL SESSION STATE (ONE-TIME LOGIN CONFIG WITH PERSISTENCE)
 // =========================================================================
 
-class Contact {
-  final String username;
-  final String userId;
-  final String avatarUrl;
-
-  Contact({
-    required this.username,
-    required this.userId,
-    required this.avatarUrl,
-  });
-
-  factory Contact.fromJson(Map<String, dynamic> json) {
-    return Contact(
-      username: json['username'] as String? ?? '',
-      userId: json['userId'] as String? ?? '',
-      avatarUrl: json['avatarUrl'] as String? ?? '',
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {'username': username, 'userId': userId, 'avatarUrl': avatarUrl};
-  }
-}
-
-class ContactManager {
-  static final ContactManager _instance = ContactManager._internal();
-  factory ContactManager() => _instance;
-  ContactManager._internal();
-
-  late SharedPreferences _prefs;
-  final ValueNotifier<List<Contact>> contactsNotifier =
-      ValueNotifier<List<Contact>>([]);
-
-  Future<void> initialize(SharedPreferences prefs) async {
-    _prefs = prefs;
-    await _loadContacts();
-  }
-
-  Future<void> _loadContacts() async {
-    final contactsJson = _prefs.getStringList('contacts') ?? [];
-    final contacts = contactsJson
-        .map(
-          (json) => Contact.fromJson(jsonDecode(json) as Map<String, dynamic>),
-        )
-        .toList();
-    contactsNotifier.value = contacts;
-  }
-
-  Future<void> addContact(Contact contact) async {
-    final contacts = List<Contact>.from(contactsNotifier.value);
-
-    // Avoid duplicate contacts
-    if (!contacts.any((c) => c.userId == contact.userId)) {
-      contacts.add(contact);
-      contactsNotifier.value = contacts;
-
-      final contactsJson = contacts.map((c) => jsonEncode(c.toJson())).toList();
-      await _prefs.setStringList('contacts', contactsJson);
-    }
-  }
-
-  Future<void> removeContact(String userId) async {
-    final contacts = List<Contact>.from(contactsNotifier.value);
-    contacts.removeWhere((c) => c.userId == userId);
-    contactsNotifier.value = contacts;
-
-    final contactsJson = contacts.map((c) => jsonEncode(c.toJson())).toList();
-    await _prefs.setStringList('contacts', contactsJson);
-  }
-
-  List<Contact> getContacts() => contactsNotifier.value;
-}
-
 class EnterpriseSession {
   static String userId = '';
   static String username = '';
@@ -110,7 +40,6 @@ class EnterpriseSession {
   // Initialize SharedPreferences
   static Future<void> initializePreferences() async {
     _prefs = await SharedPreferences.getInstance();
-    await ContactManager().initialize(_prefs);
     _loadFromPreferences();
   }
 
@@ -175,6 +104,119 @@ class EnterpriseSession {
 
   static bool isLoggedIn() {
     return userId.isNotEmpty && username.isNotEmpty;
+  }
+}
+
+class LocalShareServer {
+  LocalShareServer._();
+  static final LocalShareServer instance = LocalShareServer._();
+
+  HttpServer? _server;
+  String? _currentUrl;
+
+  Future<String> startServer() async {
+    if (_server != null && _currentUrl != null) {
+      return _currentUrl!;
+    }
+
+    final localIp = await _getLocalIpAddress();
+    _server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
+    _currentUrl = 'http://$localIp:${_server!.port}/share';
+
+    _server!.listen((request) async {
+      final response = request.response;
+      if (request.method == 'GET' && request.uri.path == '/share') {
+        final html = _buildSharePageHtml();
+        response.headers.contentType = ContentType.html;
+        response.write(html);
+      } else {
+        response.statusCode = HttpStatus.notFound;
+        response.write('Not found');
+      }
+      await response.close();
+    }, onError: (error) {
+      _server = null;
+      _currentUrl = null;
+    });
+
+    return _currentUrl!;
+  }
+
+  Future<void> stopServer() async {
+    await _server?.close(force: true);
+    _server = null;
+    _currentUrl = null;
+  }
+
+  String _buildSharePageHtml() {
+    final displayName = htmlEscape.convert(EnterpriseSession.username);
+    final avatarUrl = htmlEscape.convert(EnterpriseSession.avatarUrl);
+    final sharedUserId = htmlEscape.convert(EnterpriseSession.userId);
+
+    final escapedAvatar = avatarUrl.isNotEmpty
+        ? avatarUrl
+        : 'https://via.placeholder.com/120?text=User';
+
+    return '''<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shared Login</title>
+  <style>
+    body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f3f4f6; color: #1f2937; }
+    .frame { max-width: 540px; margin: 40px auto; padding: 24px; background: white; border-radius: 20px; box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12); }
+    .avatar { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 4px solid #4b5563; }
+    h1 { font-size: 24px; margin: 24px 0 12px; }
+    p { color: #4b5563; line-height: 1.65; }
+    .badge { display: inline-flex; align-items: center; gap: 0.5rem; background: #e0f2fe; color: #0369a1; padding: 12px 14px; border-radius: 14px; margin-top: 10px; }
+    .button { width: 100%; margin-top: 24px; padding: 14px 18px; border: none; border-radius: 14px; background: #2563eb; color: white; font-size: 16px; cursor: pointer; }
+    .button:active { transform: scale(0.98); }
+    .note { margin-top: 18px; color: #6b7280; font-size: 14px; }
+    .user-id { margin: 16px 0 0; padding: 14px; background: #f3f4f6; border-radius: 12px; word-break: break-all; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <img class="avatar" src="$escapedAvatar" alt="Avatar" />
+    <h1>Login with this UserID</h1>
+    <p>Use the shared account from this device. Messages sent from this device will appear on the right side, and the avatar will stay in sync.</p>
+    <div class="badge">Shared user: $displayName</div>
+    <div class="user-id">$sharedUserId</div>
+    <button class="button" onclick="loginNow()">Login with this user</button>
+    <p class="note">If you are using this page inside the app, tap the button above to complete login and sync preferences.</p>
+  </div>
+  <script>
+    function loginNow() {
+      const data = {
+        userId: '$sharedUserId',
+        username: '$displayName',
+        avatarUrl: '$escapedAvatar',
+      };
+      if (window.LoginChannel && window.LoginChannel.postMessage) {
+        window.LoginChannel.postMessage(JSON.stringify(data));
+      } else {
+        alert('Login channel not available inside this app.');
+      }
+    }
+  </script>
+</body>
+</html>''';
+  }
+
+  Future<String> _getLocalIpAddress() async {
+    final interfaces = await NetworkInterface.list(
+      includeLoopback: false,
+      type: InternetAddressType.IPv4,
+    );
+    for (final interface in interfaces) {
+      for (final address in interface.addresses) {
+        if (!address.isLoopback && address.type == InternetAddressType.IPv4) {
+          return address.address;
+        }
+      }
+    }
+    return '127.0.0.1';
   }
 }
 
@@ -661,100 +703,16 @@ class _ChatDashboardState extends State<ChatDashboard> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  Contact? _selectedContact;
-  bool _sidebarExpanded = true;
-
   late final Stream<DatabaseEvent> _rtdbStream;
   late final Query _messagesQuery;
 
   @override
   void initState() {
     super.initState();
-    _setupMessagesQuery();
-  }
-
-  void _setupMessagesQuery() {
-    if (_selectedContact != null) {
-      final contactPath = 'messages/${_selectedContact!.userId}';
-      _messagesQuery = FirebaseDatabase.instance
-          .ref(contactPath)
-          .orderByChild('timestamp');
-      _rtdbStream = _messagesQuery.onValue;
-    }
-  }
-
-  void _selectContact(Contact contact) {
-    setState(() {
-      _selectedContact = contact;
-      _setupMessagesQuery();
-    });
-  }
-
-  void _showAddContactDialog() {
-    final TextEditingController usernameController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Add Contact'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Enter the username to add as a contact.'),
-              const WidgetSpacer(height: 16),
-              TextField(
-                controller: usernameController,
-                decoration: InputDecoration(
-                  labelText: 'Username',
-                  prefixIcon: const Icon(Icons.person_outline),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12.0),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final username = usernameController.text.trim();
-                if (username.isNotEmpty) {
-                  // In a real app, you'd search Firebase for this user
-                  // For now, we'll create a contact with the username
-                  final newContact = Contact(
-                    username: username,
-                    userId:
-                        '${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(10000)}',
-                    avatarUrl: '',
-                  );
-
-                  await ContactManager().addContact(newContact);
-                  if (!mounted) return;
-                  Navigator.pop(context);
-                  AlertBridge.showNotification(
-                    context,
-                    'Contact "$username" added successfully.',
-                  );
-                  _selectContact(newContact);
-                } else {
-                  AlertBridge.showNotification(
-                    context,
-                    'Please enter a username.',
-                    isFailureState: true,
-                  );
-                }
-              },
-              child: const Text('Add'),
-            ),
-          ],
-        );
-      },
-    );
+    _messagesQuery = FirebaseDatabase.instance
+        .ref('messages')
+        .orderByChild('timestamp');
+    _rtdbStream = _messagesQuery.onValue;
   }
 
   @override
@@ -776,17 +734,8 @@ class _ChatDashboardState extends State<ChatDashboard> {
 
   void _handleDispatch(String content, {String? mediaUrl}) {
     if (content.trim().isEmpty && mediaUrl == null) return;
-    if (_selectedContact == null) {
-      AlertBridge.showNotification(
-        context,
-        'Please select a contact to message.',
-        isFailureState: true,
-      );
-      return;
-    }
 
-    final contactPath = 'messages/${_selectedContact!.userId}';
-    final reference = FirebaseDatabase.instance.ref(contactPath).push();
+    final reference = FirebaseDatabase.instance.ref('messages').push();
     reference.set({
       'text': content.trim(),
       'mediaUrl': mediaUrl,
@@ -802,6 +751,65 @@ class _ChatDashboardState extends State<ChatDashboard> {
 
   void _openAttachmentSequence() {
     TransmissionManager().triggerMediaModal(context, _handleDispatch);
+  }
+
+  Future<void> _showAccountShareDialog() async {
+    final shareUrl = await LocalShareServer.instance.startServer();
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        final String localIpUrl = shareUrl;
+        return AlertDialog(
+          title: const Text('Share Account'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Open this local link in another device or scan the QR code.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const WidgetSpacer(height: 20),
+              SelectableText(
+                localIpUrl,
+                style: const TextStyle(fontSize: 14, color: Colors.blueAccent),
+              ),
+              const WidgetSpacer(height: 20),
+              QrImageView(
+                data: localIpUrl,
+                size: 220.0,
+                backgroundColor: Colors.white,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Close'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _openShareLink(localIpUrl);
+              },
+              child: const Text('Open In-App'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _openShareLink(String url) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AccountShareWebView(url: url),
+      ),
+    );
   }
 
   @override
@@ -820,85 +828,66 @@ class _ChatDashboardState extends State<ChatDashboard> {
 
     return Scaffold(
       backgroundColor: colors.surfaceContainerHigh,
-      body: Row(
-        children: [
-          // Sidebar
-          _buildSidebar(colors, handleLogout),
-          // Chat area
-          Expanded(
-            child: Column(
-              children: [
-                // Header with selected contact
-                if (_selectedContact != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0,
-                      vertical: 12.0,
-                    ),
-                    decoration: BoxDecoration(
-                      color: colors.primaryContainer,
-                      border: Border(
-                        bottom: BorderSide(
-                          color: colors.outlineVariant,
-                          width: 0.5,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        UserAvatarWidget(
-                          url: _selectedContact!.avatarUrl,
-                          size: 40,
-                        ),
-                        const WidgetSpacer(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _selectedContact!.username,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: colors.onPrimaryContainer,
-                              ),
-                            ),
-                            Text(
-                              'Direct Message',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: colors.onPrimaryContainer.withValues(
-                                  alpha: 0.7,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.all(16.0),
-                    decoration: BoxDecoration(
-                      color: colors.primaryContainer,
-                      border: Border(
-                        bottom: BorderSide(
-                          color: colors.outlineVariant,
-                          width: 0.5,
-                        ),
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        'Select a contact to start messaging',
-                        style: TextStyle(
-                          color: colors.onPrimaryContainer,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ),
-                  ),
-                // Messages list
-                if (_selectedContact != null)
+      appBar: AppBar(
+        title: const Text(
+          'Reyaansh Chat',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        backgroundColor: colors.primaryContainer,
+        foregroundColor: colors.onPrimaryContainer,
+        elevation: 1,
+        actions: [
+          IconButton(
+            onPressed: _showAccountShareDialog,
+            icon: const Icon(Icons.qr_code),
+            color: colors.onPrimaryContainer,
+            tooltip: 'Share account',
+          ),
+          IconButton(
+            onPressed: () => ThemeColorPicker.open(context),
+            icon: const Icon(Icons.format_paint),
+            color: colors.onPrimaryContainer,
+            tooltip: 'Pick theme color',
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: Chip(
+              avatar: UserAvatarWidget(
+                url: EnterpriseSession.avatarUrl,
+                size: 24,
+              ),
+              label: Text(EnterpriseSession.username),
+              backgroundColor: colors.surface,
+              side: BorderSide.none,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            child: Center(
+              child: Tooltip(
+                message: 'Logout',
+                child: TouchFeedbackEnhancer(
+                  onTap: handleLogout,
+                  borderRadius: BorderRadius.circular(4.0),
+                  child: Icon(Icons.logout, color: colors.onPrimaryContainer),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final bool isDesktop = constraints.maxWidth >= 650;
+
+          return Center(
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: isDesktop ? 850.0 : double.infinity,
+              ),
+              color: colors.surface,
+              child: Column(
+                children: [
                   Expanded(
                     child: StreamBuilder<DatabaseEvent>(
                       stream: _rtdbStream,
@@ -938,7 +927,7 @@ class _ChatDashboardState extends State<ChatDashboard> {
                                 ),
                                 const WidgetSpacer(height: 16),
                                 Text(
-                                  'Start a conversation!',
+                                  'Say hello to the community!',
                                   style: TextStyle(color: colors.outline),
                                 ),
                               ],
@@ -964,330 +953,13 @@ class _ChatDashboardState extends State<ChatDashboard> {
                         );
                       },
                     ),
-                  )
-                else
-                  Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.person_add_outlined,
-                            size: 64,
-                            color: colors.outline,
-                          ),
-                          const WidgetSpacer(height: 16),
-                          Text(
-                            'No contact selected',
-                            style: TextStyle(color: colors.outline),
-                          ),
-                        ],
-                      ),
-                    ),
                   ),
-                // Input dock
-                if (_selectedContact != null) _buildInputDock(colors),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSidebar(ColorScheme colors, VoidCallback handleLogout) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      width: _sidebarExpanded ? 280 : 80,
-      decoration: BoxDecoration(
-        color: colors.surface,
-        border: Border(
-          right: BorderSide(color: colors.outlineVariant, width: 0.5),
-        ),
-      ),
-      child: Column(
-        children: [
-          // Header with collapse button
-          Container(
-            padding: const EdgeInsets.all(12.0),
-            decoration: BoxDecoration(
-              color: colors.primaryContainer,
-              border: Border(
-                bottom: BorderSide(color: colors.outlineVariant, width: 0.5),
-              ),
-            ),
-            child: Row(
-              children: [
-                if (_sidebarExpanded)
-                  Expanded(
-                    child: Text(
-                      'Messages',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: colors.onPrimaryContainer,
-                      ),
-                    ),
-                  ),
-                IconButton(
-                  icon: Icon(
-                    _sidebarExpanded ? Icons.chevron_left : Icons.chevron_right,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _sidebarExpanded = !_sidebarExpanded;
-                    });
-                  },
-                  iconSize: 24,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-          ),
-          // Add Contact Button
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: _sidebarExpanded
-                  ? FilledButton.icon(
-                      onPressed: _showAddContactDialog,
-                      icon: const Icon(Icons.person_add),
-                      label: const Text('Add Contact'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                      ),
-                    )
-                  : IconButton(
-                      onPressed: _showAddContactDialog,
-                      icon: const Icon(Icons.person_add),
-                      tooltip: 'Add Contact',
-                    ),
-            ),
-          ),
-          // Contacts List
-          Expanded(
-            child: ValueListenableBuilder<List<Contact>>(
-              valueListenable: ContactManager().contactsNotifier,
-              builder: (context, contacts, _) {
-                if (contacts.isEmpty) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.person_outline,
-                            size: 40,
-                            color: colors.outline,
-                          ),
-                          if (_sidebarExpanded) ...[
-                            const WidgetSpacer(height: 8),
-                            Text(
-                              'No contacts yet',
-                              style: TextStyle(color: colors.outline),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  itemCount: contacts.length,
-                  itemBuilder: (context, index) {
-                    final contact = contacts[index];
-                    final isSelected =
-                        _selectedContact?.userId == contact.userId;
-
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8.0,
-                        vertical: 4.0,
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12.0),
-                          onTap: () => _selectContact(contact),
-                          onLongPress: () {
-                            showDialog(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                title: const Text('Remove Contact'),
-                                content: Text(
-                                  'Remove ${contact.username} from contacts?',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () async {
-                                      await ContactManager().removeContact(
-                                        contact.userId,
-                                      );
-                                      if (!mounted) return;
-                                      Navigator.pop(context);
-                                      AlertBridge.showNotification(
-                                        context,
-                                        'Contact removed.',
-                                      );
-                                    },
-                                    child: const Text('Remove'),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(12.0),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? colors.primaryContainer
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(12.0),
-                            ),
-                            child: Row(
-                              children: [
-                                UserAvatarWidget(
-                                  url: contact.avatarUrl,
-                                  size: 40,
-                                ),
-                                if (_sidebarExpanded) ...[
-                                  const WidgetSpacer(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          contact.username,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w500,
-                                            color: isSelected
-                                                ? colors.onPrimaryContainer
-                                                : colors.onSurface,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        Text(
-                                          'Direct message',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: colors.onSurfaceVariant,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          // Bottom action buttons
-          Container(
-            padding: const EdgeInsets.all(12.0),
-            decoration: BoxDecoration(
-              border: Border(
-                top: BorderSide(color: colors.outlineVariant, width: 0.5),
-              ),
-            ),
-            child: Column(
-              children: [
-                if (_sidebarExpanded) ...[
-                  SizedBox(
-                    width: double.infinity,
-                    child: Tooltip(
-                      message: 'Theme Color',
-                      child: OutlinedButton.icon(
-                        onPressed: () => ThemeColorPicker.open(context),
-                        icon: const Icon(Icons.format_paint),
-                        label: const Text('Theme'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const WidgetSpacer(height: 8),
-                  Chip(
-                    avatar: UserAvatarWidget(
-                      url: EnterpriseSession.avatarUrl,
-                      size: 24,
-                    ),
-                    label: Text(
-                      EnterpriseSession.username,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    backgroundColor: colors.surfaceContainerHighest,
-                    side: BorderSide.none,
-                  ),
-                  const WidgetSpacer(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: handleLogout,
-                      icon: const Icon(Icons.logout),
-                      label: const Text('Logout'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        foregroundColor: colors.error,
-                        side: BorderSide(color: colors.error),
-                      ),
-                    ),
-                  ),
-                ] else ...[
-                  Tooltip(
-                    message: 'Theme Color',
-                    child: IconButton(
-                      onPressed: () => ThemeColorPicker.open(context),
-                      icon: const Icon(Icons.format_paint),
-                      iconSize: 20,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ),
-                  const WidgetSpacer(height: 8),
-                  Tooltip(
-                    message: 'Logout',
-                    child: IconButton(
-                      onPressed: handleLogout,
-                      icon: const Icon(Icons.logout),
-                      iconSize: 20,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ),
+                  _buildInputDock(colors),
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -1348,6 +1020,83 @@ class _ChatDashboardState extends State<ChatDashboard> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class AccountShareWebView extends StatefulWidget {
+  final String url;
+
+  const AccountShareWebView({super.key, required this.url});
+
+  @override
+  State<AccountShareWebView> createState() => _AccountShareWebViewState();
+}
+
+class _AccountShareWebViewState extends State<AccountShareWebView> {
+  late final WebViewController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'LoginChannel',
+        onMessageReceived: (message) async {
+          await _handleLoginMessage(message.message);
+        },
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (navigation) {
+            return NavigationDecision.navigate;
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse(widget.url));
+  }
+
+  Future<void> _handleLoginMessage(String message) async {
+    try {
+      final payload = jsonDecode(message) as Map<String, dynamic>;
+      final newUserId = payload['userId']?.toString();
+      final newUsername = payload['username']?.toString();
+      final newAvatarUrl = payload['avatarUrl']?.toString() ?? '';
+
+      if (newUserId == null || newUsername == null) {
+        throw Exception('Missing login values');
+      }
+
+      await EnterpriseSession.initializeFromShared(
+        sharedUserId: newUserId,
+        sharedUsername: newUsername,
+        sharedAvatarUrl: newAvatarUrl,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const ChatDashboard()),
+        (_) => false,
+      );
+      AlertBridge.showNotification(context, 'Shared login saved.');
+    } catch (error) {
+      if (!mounted) return;
+      AlertBridge.showNotification(
+        context,
+        'Login failed: invalid shared payload.',
+        isFailureState: true,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Shared Login'),
+      ),
+      body: WebViewWidget(controller: _controller),
     );
   }
 }
