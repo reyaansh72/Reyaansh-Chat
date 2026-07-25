@@ -299,6 +299,37 @@ class SettingsScreen extends StatelessWidget {
   static final ValueNotifier<bool> _vpnEnabledNotifier = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> _analyticsEnabledNotifier = ValueNotifier<bool>(true);
 
+  // ==========================================
+  // DAILY USE FEATURE NOTIFIERS
+  // ==========================================
+  // Proxy Configuration
+  static final ValueNotifier<String> _proxyTypeNotifier = ValueNotifier<String>('Direct');
+  static final ValueNotifier<String> _proxyHostNotifier = ValueNotifier<String>('');
+  static final ValueNotifier<String> _proxyPortNotifier = ValueNotifier<String>('');
+
+  // Do Not Disturb
+  static final ValueNotifier<bool> _dndEnabledNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<String> _dndStartTimeNotifier = ValueNotifier<String>('10:00 PM');
+  static final ValueNotifier<String> _dndEndTimeNotifier = ValueNotifier<String>('7:00 AM');
+  static final ValueNotifier<bool> _dndAllowEmergencyNotifier = ValueNotifier<bool>(true);
+
+  // Quick Status
+  static final ValueNotifier<String> _currentStatusNotifier = ValueNotifier<String>('Online');
+  static final ValueNotifier<String> _statusMessageNotifier = ValueNotifier<String>('');
+
+  // Chat Features
+  static final ValueNotifier<bool> _archiveChatNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> _pinChatNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> _muteChatNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> _enableDraftsNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _autoReplyNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<String> _autoReplyMessageNotifier = ValueNotifier<String>('I\'m currently away.');
+
+  // Advanced Features
+  static final ValueNotifier<bool> _messageForwardingNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _chatSearchNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _smartNotificationsNotifier = ValueNotifier<bool>(true);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1178,7 +1209,107 @@ Active since app launch
           const Divider(),
 
           // ==========================================
-          // 9N. ADVANCED OPTIONS
+          // 9N. QUICK ACTIONS (Daily Use)
+          // ==========================================
+          _buildSectionHeader(context, 'Quick Actions'),
+          ListTile(
+            leading: const Icon(Icons.status_display),
+            title: const Text('Set Status'),
+            subtitle: ValueListenableBuilder<String>(
+              valueListenable: _currentStatusNotifier,
+              builder: (context, status, _) => Text('Current: $status'),
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showStatusDialog(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.do_not_disturb),
+            title: const Text('Do Not Disturb'),
+            subtitle: ValueListenableBuilder<bool>(
+              valueListenable: _dndEnabledNotifier,
+              builder: (context, enabled, _) => Text(enabled ? 'Enabled' : 'Disabled'),
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showDndConfigDialog(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.reply_all),
+            title: const Text('Auto-Reply'),
+            subtitle: ValueListenableBuilder<bool>(
+              valueListenable: _autoReplyNotifier,
+              builder: (context, enabled, _) => Text(enabled ? 'When away' : 'Disabled'),
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showAutoReplyDialog(context);
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9O. CHAT FEATURES (Daily Use)
+          // ==========================================
+          _buildSectionHeader(context, 'Chat Features'),
+          ValueListenableBuilder<bool>(
+            valueListenable: _enableDraftsNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Message Drafts'),
+              subtitle: const Text('Save messages before sending'),
+              secondary: const Icon(Icons.edit_note),
+              onChanged: (v) {
+                _enableDraftsNotifier.value = v;
+                _showToast(context, 'Drafts ${v ? "enabled" : "disabled"}');
+              },
+            ),
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _messageForwardingNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Message Forwarding'),
+              subtitle: const Text('Forward messages to other chats'),
+              secondary: const Icon(Icons.forward),
+              onChanged: (v) {
+                _messageForwardingNotifier.value = v;
+                _showToast(context, 'Message forwarding ${v ? "enabled" : "disabled"}');
+              },
+            ),
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _chatSearchNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Chat Search'),
+              subtitle: const Text('Search messages and chats'),
+              secondary: const Icon(Icons.search),
+              onChanged: (v) {
+                _chatSearchNotifier.value = v;
+                _showToast(context, 'Chat search ${v ? "enabled" : "disabled"}');
+              },
+            ),
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _smartNotificationsNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Smart Notifications'),
+              subtitle: const Text('AI-powered notification filtering'),
+              secondary: const Icon(Icons.smart_toy),
+              onChanged: (v) {
+                _smartNotificationsNotifier.value = v;
+                _showToast(context, 'Smart notifications ${v ? "enabled" : "disabled"}');
+              },
+            ),
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9P. ADVANCED OPTIONS
           // ==========================================
           _buildSectionHeader(context, 'Advanced Options'),
           ListTile(
@@ -1835,39 +1966,113 @@ Active since app launch
   }
 
   void _showProxyDialog(BuildContext context) {
+    final hostController = TextEditingController(text: _proxyHostNotifier.value);
+    final portController = TextEditingController(text: _proxyPortNotifier.value);
+    
     showDialog(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Proxy Settings'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text('Current Connection: Direct', style: TextStyle(fontWeight: FontWeight.w600)),
-              SizedBox(height: 12),
-              Text('No proxy server configured'),
-              SizedBox(height: 12),
-              Text('Proxy Options:', style: TextStyle(fontWeight: FontWeight.w600)),
-              SizedBox(height: 8),
-              Text('• Direct Connection (Current)'),
-              Text('• HTTP Proxy'),
-              Text('• SOCKS Proxy'),
-              Text('• Custom Proxy'),
-            ],
+          title: const Text('Proxy Configuration'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Proxy Type:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                ValueListenableBuilder<String>(
+                  valueListenable: _proxyTypeNotifier,
+                  builder: (context, type, _) => Column(
+                    children: [
+                      RadioListTile<String>(
+                        title: const Text('Direct Connection'),
+                        value: 'Direct',
+                        groupValue: type,
+                        onChanged: (value) {
+                          _proxyTypeNotifier.value = value ?? 'Direct';
+                        },
+                      ),
+                      RadioListTile<String>(
+                        title: const Text('HTTP Proxy'),
+                        value: 'HTTP',
+                        groupValue: type,
+                        onChanged: (value) {
+                          _proxyTypeNotifier.value = value ?? 'HTTP';
+                        },
+                      ),
+                      RadioListTile<String>(
+                        title: const Text('SOCKS5 Proxy'),
+                        value: 'SOCKS5',
+                        groupValue: type,
+                        onChanged: (value) {
+                          _proxyTypeNotifier.value = value ?? 'SOCKS5';
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (_proxyTypeNotifier.value != 'Direct') ...[
+                  const Text('Proxy Host:', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: hostController,
+                    decoration: InputDecoration(
+                      hintText: 'e.g., proxy.example.com',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Proxy Port:', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: portController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      hintText: 'e.g., 8080',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        'Default HTTP: 8080\nDefault SOCKS5: 1080\nLeave blank to use defaults.',
+                        style: TextStyle(fontSize: 12, color: Colors.blue),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Close'),
+              onPressed: () {
+                hostController.dispose();
+                portController.dispose();
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
+                _proxyHostNotifier.value = hostController.text;
+                _proxyPortNotifier.value = portController.text;
+                hostController.dispose();
+                portController.dispose();
                 Navigator.pop(dialogContext);
-                _showToast(context, 'Proxy settings configured ✓');
+                _showToast(context, 'Proxy configured: ${_proxyTypeNotifier.value}\nHost: ${hostController.text.isEmpty ? "default" : hostController.text}');
               },
-              child: const Text('Configure'),
+              child: const Text('Save'),
             ),
           ],
         );
@@ -1953,6 +2158,225 @@ Active since app launch
                 _showToast(context, 'Backup started...\nBackup complete ✓');
               },
               child: const Text('Backup Now'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showDndConfigDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Do Not Disturb Settings'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ValueListenableBuilder<bool>(
+                valueListenable: _dndEnabledNotifier,
+                builder: (context, enabled, _) => SwitchListTile(
+                  title: const Text('Enable DND'),
+                  value: enabled,
+                  onChanged: (v) => _dndEnabledNotifier.value = v,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (_dndEnabledNotifier.value) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Start Time:', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: ValueListenableBuilder<String>(
+                          valueListenable: _dndStartTimeNotifier,
+                          builder: (context, time, _) => Text(time, style: const TextStyle(fontSize: 16)),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text('End Time:', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: ValueListenableBuilder<String>(
+                          valueListenable: _dndEndTimeNotifier,
+                          builder: (context, time, _) => Text(time, style: const TextStyle(fontSize: 16)),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ValueListenableBuilder<bool>(
+                        valueListenable: _dndAllowEmergencyNotifier,
+                        builder: (context, allow, _) => CheckboxListTile(
+                          title: const Text('Allow Emergency Calls'),
+                          value: allow,
+                          onChanged: (v) => _dndAllowEmergencyNotifier.value = v ?? true,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showToast(context, 'DND ${_dndEnabledNotifier.value ? "enabled" : "disabled"}\n${_dndStartTimeNotifier.value} - ${_dndEndTimeNotifier.value}');
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showStatusDialog(BuildContext context) {
+    final statuses = ['Online', 'Away', 'Busy', 'Offline'];
+    
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Set Your Status'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ValueListenableBuilder<String>(
+                valueListenable: _currentStatusNotifier,
+                builder: (context, status, _) => Column(
+                  children: statuses.map((s) {
+                    final colors = {
+                      'Online': Colors.green,
+                      'Away': Colors.orange,
+                      'Busy': Colors.red,
+                      'Offline': Colors.grey,
+                    };
+                    return RadioListTile<String>(
+                      title: Row(
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: colors[s] ?? Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(s),
+                        ],
+                      ),
+                      value: s,
+                      groupValue: status,
+                      onChanged: (value) => _currentStatusNotifier.value = value ?? 'Online',
+                    );
+                  }).toList(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text('Status Message (Optional):', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              TextField(
+                onChanged: (v) => _statusMessageNotifier.value = v,
+                decoration: InputDecoration(
+                  hintText: 'What\'s on your mind?',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showToast(context, 'Status: ${_currentStatusNotifier.value} ✓');
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showAutoReplyDialog(BuildContext context) {
+    final messageController = TextEditingController(text: _autoReplyMessageNotifier.value);
+    
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Auto-Reply Settings'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ValueListenableBuilder<bool>(
+                valueListenable: _autoReplyNotifier,
+                builder: (context, enabled, _) => SwitchListTile(
+                  title: const Text('Enable Auto-Reply'),
+                  value: enabled,
+                  onChanged: (v) => _autoReplyNotifier.value = v,
+                ),
+              ),
+              if (_autoReplyNotifier.value) ...[
+                const SizedBox(height: 12),
+                const Text('Auto-Reply Message:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: messageController,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    hintText: 'I\'m currently away and will reply soon.',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () {
+                messageController.dispose();
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                _autoReplyMessageNotifier.value = messageController.text;
+                messageController.dispose();
+                Navigator.pop(dialogContext);
+                _showToast(context, 'Auto-reply ${_autoReplyNotifier.value ? "enabled" : "disabled"} ✓');
+              },
+              child: const Text('Save'),
             ),
           ],
         );
