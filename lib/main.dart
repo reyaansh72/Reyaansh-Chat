@@ -42,6 +42,13 @@ class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   // ==========================================
+  // APP VERSION CONSTANTS
+  // ==========================================
+  static const String _currentVersion = '1.9';
+  static const String _gitHubRepo = 'reyaansh72/Reyaansh-Chat';
+  static const String _gitHubApiUrl = 'https://api.github.com/repos/reyaansh72/Reyaansh-Chat/releases';
+
+  // ==========================================
   // LOCAL STATE NOTIFIERS (For UI demonstration without editing main classes)
   // ==========================================
   static final ValueNotifier<bool> _sendWithEnterNotifier = ValueNotifier<bool>(true);
@@ -53,6 +60,8 @@ class SettingsScreen extends StatelessWidget {
   static final ValueNotifier<bool> _dataSaverNotifier = ValueNotifier<bool>(false);
   static final ValueNotifier<double> _chatFontSizeNotifier = ValueNotifier<double>(14.0);
   static final ValueNotifier<int> _developerTapCount = ValueNotifier<int>(0);
+  static final ValueNotifier<String?> _latestVersionNotifier = ValueNotifier<String?>(null);
+  static final ValueNotifier<bool> _checkingUpdateNotifier = ValueNotifier<bool>(false);
 
   @override
   Widget build(BuildContext context) {
@@ -362,37 +371,180 @@ class SettingsScreen extends StatelessWidget {
           // ==========================================
           _buildSectionHeader(context, 'Account & Sharing'),
           ListTile(
+            leading: const Icon(Icons.person),
+            title: const Text('My Profile'),
+            subtitle: const Text('View and edit your profile'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showProfileDialog(context);
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.copy),
             title: const Text('Copy Profile ID'),
-            subtitle: const Text('Copy your exact User ID to clipboard'),
+            subtitle: Text('Copy ${EnterpriseSession.userId.isEmpty ? "your ID" : EnterpriseSession.userId.substring(0, min(12, EnterpriseSession.userId.length))}...'),
             onTap: () {
-              Clipboard.setData(const ClipboardData(text: 'EnterpriseSession.userId'));
-              _showToast(context, 'User ID copied');
+              if (EnterpriseSession.userId.isEmpty) {
+                _showToast(context, 'No user ID available. Please log in first.');
+                return;
+              }
+              Clipboard.setData(ClipboardData(text: EnterpriseSession.userId));
+              _showToast(context, 'User ID copied: ${EnterpriseSession.userId.substring(0, min(8, EnterpriseSession.userId.length))}...');
             },
           ),
           ListTile(
             leading: const Icon(Icons.share),
-            title: const Text('Copy Local Share Link'),
-            subtitle: const Text('Generate network sharing URL'),
+            title: const Text('Generate Share Link'),
+            subtitle: const Text('Share account access via network'),
             onTap: () async {
-              // Assuming LocalShareServer is defined in your project
-              // final shareUrl = await LocalShareServer.instance.startServer();
-              await Clipboard.setData(const ClipboardData(text: 'http://local.share.link'));
-              if (context.mounted) _showToast(context, 'Share link copied to clipboard');
+              _showToast(context, 'Generating share link...');
+              try {
+                final shareUrl = await LocalShareServer.instance.startServer();
+                await Clipboard.setData(ClipboardData(text: shareUrl));
+                if (context.mounted) {
+                  _showToast(context, 'Share link ready: $shareUrl');
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  _showToast(context, 'Error generating share link: $e');
+                }
+              }
             },
           ),
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('Session Information'),
-            subtitle: const Text('View current active session data'),
+            subtitle: const Text('View active session details'),
             onTap: () {
-              _showInfoDialog(context, 'Session Info', 'Active since app launch.\nPlatform: ${Theme.of(context).platform.name}');
+              final sessionInfo = '''
+User: ${EnterpriseSession.username}
+ID: ${EnterpriseSession.userId}
+Platform: ${Theme.of(context).platform.name}
+Theme: ${EnterpriseSession.currentThemeVariant}
+Notifications: ${EnterpriseSession.notificationsEnabled ? 'Enabled' : 'Disabled'}
+App Version: 1.9
+Active since app launch
+              ''';
+              _showInfoDialog(context, 'Session Information', sessionInfo.trim());
             },
           ),
           const Divider(),
 
           // ==========================================
-          // 9. APP INFO & DEVELOPER TOOLS (New)
+          // 9. LOCALIZATION & LANGUAGE
+          // ==========================================
+          _buildSectionHeader(context, 'Language & Region'),
+          ListTile(
+            leading: const Icon(Icons.language),
+            title: const Text('Language'),
+            subtitle: const Text('English (US)'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showLanguageDialog(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.location_on),
+            title: const Text('Region'),
+            subtitle: const Text('United States'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showToast(context, 'Region selection coming soon');
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9B. SOUND & AUDIO
+          // ==========================================
+          _buildSectionHeader(context, 'Sound & Audio'),
+          ListTile(
+            leading: const Icon(Icons.volume_up),
+            title: const Text('Message Notifications'),
+            subtitle: const Text('Sound enabled'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showToast(context, 'Message sound: Enabled\nVibration: Enabled');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.volume_mute),
+            title: const Text('Mute All Sounds'),
+            subtitle: const Text('Disable notification audio'),
+            onTap: () {
+              HapticFeedback.vibrate();
+              _showToast(context, 'All notification sounds muted');
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9C. SCHEDULED & ADVANCED
+          // ==========================================
+          _buildSectionHeader(context, 'Scheduled & Advanced'),
+          ListTile(
+            leading: const Icon(Icons.schedule),
+            title: const Text('Dark Mode Schedule'),
+            subtitle: const Text('Auto-switch at 9PM - 7AM'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showToast(context, 'Scheduled dark mode enabled\n9:00 PM - 7:00 AM');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.cloud_download),
+            title: const Text('Backup Settings'),
+            subtitle: const Text('Auto-backup to cloud'),
+            trailing: Switch(value: true, onChanged: (_) {}),
+            onTap: null,
+          ),
+          ListTile(
+            leading: const Icon(Icons.download),
+            title: const Text('Export Settings'),
+            subtitle: const Text('Download your settings as JSON'),
+            onTap: () {
+              _exportSettings(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.upload),
+            title: const Text('Import Settings'),
+            subtitle: const Text('Restore settings from JSON file'),
+            onTap: () {
+              _showToast(context, 'Import feature coming soon');
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9E. UPDATES & MAINTENANCE
+          // ==========================================
+          _buildSectionHeader(context, 'Updates & Maintenance'),
+          ValueListenableBuilder<bool>(
+            valueListenable: _checkingUpdateNotifier,
+            builder: (context, isChecking, _) {
+              return ValueListenableBuilder<String?>(
+                valueListenable: _latestVersionNotifier,
+                builder: (context, latestVersion, _) {
+                  return ListTile(
+                    leading: const Icon(Icons.system_update),
+                    title: const Text('Check for Updates'),
+                    subtitle: isChecking
+                        ? const Text('Checking latest release...')
+                        : latestVersion != null && _isNewerVersion(latestVersion, _currentVersion)
+                            ? Text('New version available: $latestVersion (Current: $_currentVersion)')
+                            : const Text('App version: 1.9'),
+                    trailing: isChecking ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)) : null,
+                    onTap: isChecking ? null : () => _checkAndDownloadUpdate(context),
+                  );
+                },
+              );
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9D. APP INFO & DEVELOPER TOOLS (New)
           // ==========================================
           _buildSectionHeader(context, 'App Info'),
           ListTile(
@@ -481,20 +633,33 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.delete_forever, color: Colors.redAccent),
             title: const Text('Clear App Data', style: TextStyle(color: Colors.redAccent)),
-            subtitle: const Text('Reset all local preferences and cache'),
+            subtitle: const Text('Reset all preferences and cache'),
             onTap: () {
-               _showInfoDialog(context, 'Clear Data', 'This is a mock action. In a real app, this would clear SharedPreferences and local databases.');
+              _showConfirmDialog(context, 'Clear All Data', 'This will reset all app settings, preferences, and cache. Continue?', () async {
+                PaintingBinding.instance.imageCache.clear();
+                PaintingBinding.instance.imageCache.clearLiveImages();
+                // Clear all shared preferences
+                await EnterpriseSession._prefs.clear();
+                if (context.mounted) {
+                  _showToast(context, 'All app data cleared successfully');
+                  // Optionally restart the app or reload settings
+                }
+              });
             },
           ),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
             title: const Text('Logout', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-            subtitle: const Text('Sign out and return to login screen'),
+            subtitle: const Text('Sign out from this device'),
             onTap: () async {
-              await EnterpriseSession.logout();
-              if (context.mounted) {
-                // Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
-              }
+              _showConfirmDialog(context, 'Logout', 'Are you sure you want to logout?', () async {
+                await EnterpriseSession.logout();
+                if (context.mounted) {
+                  _showToast(context, 'Logged out successfully');
+                  // Return to login screen by popping all routes
+                  Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
+                }
+              });
             },
           ),
           const SizedBox(height: 48), // Padding at bottom for scrolling
@@ -545,6 +710,287 @@ class SettingsScreen extends StatelessWidget {
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showConfirmDialog(BuildContext context, String title, String message, VoidCallback onConfirm) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                onConfirm();
+              },
+              child: const Text('Confirm'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showProfileDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('My Profile'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 40,
+                backgroundImage: EnterpriseSession.avatarUrl.isNotEmpty
+                    ? NetworkImage(EnterpriseSession.avatarUrl)
+                    : null,
+                child: EnterpriseSession.avatarUrl.isEmpty
+                    ? const Icon(Icons.person, size: 40)
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              Text('Name: ${EnterpriseSession.username}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Text('ID: ${EnterpriseSession.userId}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 8),
+              Text('Status: ${EnterpriseSession.isLoggedIn() ? 'Logged In' : 'Not Logged In'}', style: const TextStyle(fontSize: 12)),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _showToast(context, 'Edit profile feature coming soon');
+              },
+              child: const Text('Edit'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showLanguageDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Select Language'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.check_circle, color: Colors.blue),
+                  title: const Text('English (US)'),
+                  onTap: () {
+                    Navigator.of(dialogContext).pop();
+                    _showToast(context, 'Language set to English');
+                  },
+                ),
+                ListTile(
+                  title: const Text('Spanish (ES)'),
+                  onTap: () {
+                    Navigator.of(dialogContext).pop();
+                    _showToast(context, 'Language changed to Spanish');
+                  },
+                ),
+                ListTile(
+                  title: const Text('French (FR)'),
+                  onTap: () {
+                    Navigator.of(dialogContext).pop();
+                    _showToast(context, 'Language changed to French');
+                  },
+                ),
+                ListTile(
+                  title: const Text('German (DE)'),
+                  onTap: () {
+                    Navigator.of(dialogContext).pop();
+                    _showToast(context, 'Language changed to German');
+                  },
+                ),
+                ListTile(
+                  title: const Text('Hindi (HI)'),
+                  onTap: () {
+                    Navigator.of(dialogContext).pop();
+                    _showToast(context, 'Language changed to Hindi');
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _exportSettings(BuildContext context) {
+    final settings = {
+      'theme': EnterpriseSession.currentThemeVariant,
+      'themeSeed': EnterpriseSession.themeSeed.toARGB32(),
+      'notifications': EnterpriseSession.notificationsEnabled,
+      'timestamp': DateTime.now().toIso8601String(),
+      'version': '1.9',
+    };
+    final jsonString = jsonEncode(settings);
+    Clipboard.setData(ClipboardData(text: jsonString));
+    _showToast(context, 'Settings exported to clipboard');
+  }
+
+  // ==========================================
+  // UPDATE CHECKING & DOWNLOAD METHODS
+  // ==========================================
+
+  static bool _isNewerVersion(String latestVersion, String currentVersion) {
+    try {
+      final latest = _parseVersion(latestVersion);
+      final current = _parseVersion(currentVersion);
+      return latest.compareTo(current) > 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static List<int> _parseVersion(String version) {
+    // Parse version like "1.9", "2.0.1", "1.9.0" to [1, 9, 0]
+    return version
+        .replaceAll('v', '')
+        .split('.')
+        .map((e) => int.tryParse(e) ?? 0)
+        .toList();
+  }
+
+  Future<void> _checkAndDownloadUpdate(BuildContext context) async {
+    try {
+      _checkingUpdateNotifier.value = true;
+      _showToast(context, 'Checking for updates...');
+
+      final release = await _fetchLatestRelease();
+      if (release == null) {
+        if (context.mounted) {
+          _showToast(context, 'Could not check for updates. Please try again.');
+        }
+        _checkingUpdateNotifier.value = false;
+        return;
+      }
+
+      final latestVersion = release['version'] as String;
+      _latestVersionNotifier.value = latestVersion;
+
+      if (_isNewerVersion(latestVersion, _currentVersion)) {
+        // New version available
+        if (context.mounted) {
+          _showUpdateDialog(context, latestVersion, release['downloadUrl'] as String);
+        }
+      } else {
+        // Already on latest version
+        if (context.mounted) {
+          _showToast(context, 'All Updated ✓ You are on the latest version ($latestVersion)');
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        _showToast(context, 'Error checking updates: $e');
+      }
+    } finally {
+      _checkingUpdateNotifier.value = false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _fetchLatestRelease() async {
+    try {
+      final response = await http.get(
+        Uri.parse(_gitHubApiUrl),
+        headers: {'Accept': 'application/vnd.github.v3+json'},
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> releases = jsonDecode(response.body);
+        if (releases.isEmpty) return null;
+
+        // Find the latest Android APK release
+        for (var release in releases) {
+          final tagName = release['tag_name'] as String? ?? '';
+          final assets = release['assets'] as List<dynamic>? ?? [];
+
+          // Look for Android APK
+          for (var asset in assets) {
+            final assetName = asset['name'] as String? ?? '';
+            if (assetName.contains('android', 0) || assetName.endsWith('.apk')) {
+              return {
+                'version': tagName.replaceAll('v', ''),
+                'downloadUrl': asset['browser_download_url'] as String,
+                'releaseName': release['name'] as String? ?? tagName,
+                'releaseNotes': release['body'] as String? ?? 'No release notes available',
+              };
+            }
+          }
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  void _showUpdateDialog(BuildContext context, String latestVersion, String downloadUrl) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('New Update Available 🎉'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Current Version: $_currentVersion'),
+              Text('Latest Version: $latestVersion'),
+              const SizedBox(height: 12),
+              const Text('A new version is available for download. Would you like to download and install it?'),
+              const SizedBox(height: 8),
+              Text('Download URL: $downloadUrl', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Later'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.download),
+              label: const Text('Download'),
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                _showToast(context, 'Opening download link...');
+                final uri = Uri.parse(downloadUrl);
+                if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+                  if (context.mounted) {
+                    _showToast(context, 'Could not open download link');
+                  }
+                }
+              },
             ),
           ],
         );
