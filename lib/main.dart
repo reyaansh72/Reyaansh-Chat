@@ -2100,13 +2100,6 @@ Future<void> _initializeFirebaseMessaging() async {
     await _localNotificationsPlugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_chatNotificationChannel);
-
-    // Android-specific: Enable vibration and sound for notifications
-    if (Platform.isAndroid) {
-      await _localNotificationsPlugin
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.requestPermission();
-    }
   }
 
   // Request notification permissions
