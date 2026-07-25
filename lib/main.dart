@@ -1064,7 +1064,7 @@ Active since app launch
             title: const Text('Last Backup'),
             subtitle: const Text('Today at 2:45 PM'),
             onTap: () {
-              _showToast(context, 'Starting backup...');
+              _showBackupActionDialog(context);
             },
           ),
           ListTile(
@@ -1912,6 +1912,47 @@ Active since app launch
                 _showToast(context, 'Dark mode schedule enabled ✓\n9:00 PM - 7:00 AM');
               },
               child: const Text('Enable'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showBackupActionDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Backup Messages'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Text('Last Backup: Today at 2:45 PM', style: TextStyle(fontWeight: FontWeight.w600)),
+              SizedBox(height: 12),
+              Text('Backup Status:', style: TextStyle(fontWeight: FontWeight.w500)),
+              SizedBox(height: 8),
+              Text('✓ All messages synced'),
+              Text('✓ 1,247 messages backed up'),
+              Text('✓ Cloud storage: 45.2 MB'),
+              Text('✓ Last sync duration: 2.3 seconds'),
+              SizedBox(height: 16),
+              Text('Next auto-backup in 6 hours', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showToast(context, 'Backup started...\nBackup complete ✓');
+              },
+              child: const Text('Backup Now'),
             ),
           ],
         );
