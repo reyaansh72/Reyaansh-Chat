@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -5,10 +6,86 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:http/http.dart' as http;
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'firebase_options.dart';
+
+const String kNotificationBackendUrl = String.fromEnvironment(
+  'NOTIFICATION_BACKEND_URL',
+  defaultValue: 'https://your-render-backend.onrender.com',
+);
+
+const AndroidNotificationChannel _chatNotificationChannel = AndroidNotificationChannel(
+  'chat_messages',
+  'Chat Messages',
+  description: 'Notifications for new group chat messages.',
+  importance: Importance.high,
+);
+
+final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await _showLocalNotification(message);
+}
+
+Future<void> _showLocalNotification(RemoteMessage message) async {
+  final remoteNotification = message.notification;
+
+  if (remoteNotification == null) return;
+
+  final notificationDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      _chatNotificationChannel.id,
+      _chatNotificationChannel.name,
+      channelDescription: _chatNotificationChannel.description,
+      importance: Importance.high,
+      priority: Priority.high,
+      ticker: 'ticker',
+    ),
+  );
+
+  await _localNotificationsPlugin.show(
+    remoteNotification.hashCode,
+    remoteNotification.title,
+    remoteNotification.body,
+    notificationDetails,
+    payload: message.data['click_action'] ?? '',
+  );
+}
+
+Future<void> _initializeFirebaseMessaging() async {
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  await _localNotificationsPlugin
+      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(_chatNotificationChannel);
+
+  final settings = await FirebaseMessaging.instance.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+  );
+
+  if (settings.authorizationStatus == AuthorizationStatus.denied) {
+    return;
+  }
+
+  await FirebaseMessaging.instance.subscribeToTopic('group_chat');
+
+  FirebaseMessaging.onMessage.listen((message) async {
+    await _showLocalNotification(message);
+  });
+
+  FirebaseMessaging.onMessageOpenedApp.listen((message) {
+    // Optionally handle notification taps here.
+  });
+}
 
 void main() async {
   // 1. Finalizes low-level platform channels and loops
@@ -19,6 +96,7 @@ void main() async {
 
   // 3. Initialise the native Firebase core engine architecture
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await _initializeFirebaseMessaging();
 
   // 4. Mount and build the Material 3 app workspace tree
   runApp(const ReyaanshCoreApp());
@@ -129,6 +207,10 @@ class LocalShareServer {
         final html = _buildSharePageHtml();
         response.headers.contentType = ContentType.html;
         response.write(html);
+      } else if (request.method == 'GET' && request.uri.path == '/payload') {
+        final payload = _buildPayloadJson();
+        response.headers.contentType = ContentType.json;
+        response.write(payload);
       } else {
         response.statusCode = HttpStatus.notFound;
         response.write('Not found');
@@ -146,6 +228,15 @@ class LocalShareServer {
     await _server?.close(force: true);
     _server = null;
     _currentUrl = null;
+  }
+
+  String _buildPayloadJson() {
+    final payload = {
+      'userId': EnterpriseSession.userId,
+      'username': EnterpriseSession.username,
+      'avatarUrl': EnterpriseSession.avatarUrl,
+    };
+    return jsonEncode(payload);
   }
 
   String _buildSharePageHtml() {
@@ -179,27 +270,13 @@ class LocalShareServer {
 <body>
   <div class="frame">
     <img class="avatar" src="$escapedAvatar" alt="Avatar" />
-    <h1>Login with this UserID</h1>
-    <p>Use the shared account from this device. Messages sent from this device will appear on the right side, and the avatar will stay in sync.</p>
+    <h1>Shared login ready</h1>
+    <p>Switch to the app, then tap 'Use shared account' in the chat screen to complete login.</p>
     <div class="badge">Shared user: $displayName</div>
     <div class="user-id">$sharedUserId</div>
-    <button class="button" onclick="loginNow()">Login with this user</button>
-    <p class="note">If you are using this page inside the app, tap the button above to complete login and sync preferences.</p>
+    <button class="button" onclick="window.location.href = '/payload'">Fetch shared payload</button>
+    <p class="note">This page now exposes the shared account payload directly for the receiving app to fetch.</p>
   </div>
-  <script>
-    function loginNow() {
-      const data = {
-        userId: '$sharedUserId',
-        username: '$displayName',
-        avatarUrl: '$escapedAvatar',
-      };
-      if (window.LoginChannel && window.LoginChannel.postMessage) {
-        window.LoginChannel.postMessage(JSON.stringify(data));
-      } else {
-        alert('Login channel not available inside this app.');
-      }
-    }
-  </script>
 </body>
 </html>''';
   }
@@ -705,18 +782,26 @@ class _ChatDashboardState extends State<ChatDashboard> {
 
   late final Stream<DatabaseEvent> _rtdbStream;
   late final Query _messagesQuery;
+  late final StreamSubscription<DatabaseEvent> _childAddedSubscription;
+  late final int _messageNotificationCutoff;
 
   @override
   void initState() {
     super.initState();
+    _messageNotificationCutoff = DateTime.now().millisecondsSinceEpoch;
     _messagesQuery = FirebaseDatabase.instance
         .ref('messages')
         .orderByChild('timestamp');
     _rtdbStream = _messagesQuery.onValue;
+    _childAddedSubscription = FirebaseDatabase.instance
+        .ref('messages')
+        .onChildAdded
+        .listen(_handleMessageAdded);
   }
 
   @override
   void dispose() {
+    _childAddedSubscription.cancel();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -736,6 +821,7 @@ class _ChatDashboardState extends State<ChatDashboard> {
     if (content.trim().isEmpty && mediaUrl == null) return;
 
     final reference = FirebaseDatabase.instance.ref('messages').push();
+    final messageId = reference.key ?? '';
     reference.set({
       'text': content.trim(),
       'mediaUrl': mediaUrl,
@@ -745,8 +831,83 @@ class _ChatDashboardState extends State<ChatDashboard> {
       'senderAvatarUrl': EnterpriseSession.avatarUrl,
     });
 
+    _notifyNotificationService(
+      senderId: EnterpriseSession.userId,
+      senderName: EnterpriseSession.username,
+      text: content.trim(),
+      messageId: messageId,
+    );
+
     _textController.clear();
     Future.delayed(const Duration(milliseconds: 200), _scrollToBottom);
+  }
+
+  Future<void> _notifyNotificationService({
+    required String senderId,
+    required String senderName,
+    required String text,
+    required String messageId,
+  }) async {
+    if (kNotificationBackendUrl.contains('your-render-backend')) {
+      return;
+    }
+
+    try {
+      final uri = Uri.parse('$kNotificationBackendUrl/notify');
+      await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'senderId': senderId,
+          'senderName': senderName,
+          'text': text,
+          'messageId': messageId,
+        }),
+      );
+    } catch (error) {
+      // Ignored: notification service failed, app still sends message.
+    }
+  }
+
+  Future<void> _handleMessageAdded(DatabaseEvent event) async {
+    if (event.snapshot.value == null) return;
+
+    final value = event.snapshot.value as Map<dynamic, dynamic>?;
+    if (value == null) return;
+
+    final triggerId = value['senderId']?.toString() ?? '';
+    final timestamp = value['timestamp'];
+    final createdAt = timestamp is int
+        ? timestamp
+        : int.tryParse(timestamp?.toString() ?? '') ?? 0;
+
+    if (createdAt < _messageNotificationCutoff) {
+      return;
+    }
+
+    if (triggerId == EnterpriseSession.userId) {
+      return;
+    }
+
+    final senderName = value['senderName']?.toString() ?? 'New message';
+    final text = value['text']?.toString() ?? '';
+    final body = text.isNotEmpty ? text : 'Sent an attachment';
+
+    await _showLocalNotification(
+      RemoteMessage(
+        notification: RemoteNotification(
+          title: '$senderName sent a message',
+          body: body,
+        ),
+        data: {
+          'senderId': triggerId,
+          'messageId': event.snapshot.key ?? '',
+          'type': 'chat',
+        },
+      ),
+    );
   }
 
   void _openAttachmentSequence() {
@@ -807,7 +968,7 @@ class _ChatDashboardState extends State<ChatDashboard> {
   void _openShareLink(String url) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => AccountShareWebView(url: url),
+        builder: (context) => AccountShareReceiver(url: url),
       ),
     );
   }
@@ -1024,42 +1185,37 @@ class _ChatDashboardState extends State<ChatDashboard> {
   }
 }
 
-class AccountShareWebView extends StatefulWidget {
+class AccountShareReceiver extends StatefulWidget {
   final String url;
 
-  const AccountShareWebView({super.key, required this.url});
+  const AccountShareReceiver({super.key, required this.url});
 
   @override
-  State<AccountShareWebView> createState() => _AccountShareWebViewState();
+  State<AccountShareReceiver> createState() => _AccountShareReceiverState();
 }
 
-class _AccountShareWebViewState extends State<AccountShareWebView> {
-  late final WebViewController _controller;
+class _AccountShareReceiverState extends State<AccountShareReceiver> {
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..addJavaScriptChannel(
-        'LoginChannel',
-        onMessageReceived: (message) async {
-          await _handleLoginMessage(message.message);
-        },
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (navigation) {
-            return NavigationDecision.navigate;
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse(widget.url));
+    _fetchSharedPayload();
   }
 
-  Future<void> _handleLoginMessage(String message) async {
+  Future<void> _fetchSharedPayload() async {
     try {
-      final payload = jsonDecode(message) as Map<String, dynamic>;
+      final baseUri = Uri.parse(widget.url);
+      final payloadUri = baseUri.replace(path: '/payload');
+      final request = await HttpClient().getUrl(payloadUri);
+      final response = await request.close();
+      if (response.statusCode != HttpStatus.ok) {
+        throw Exception('Failed to load payload');
+      }
+
+      final body = await response.transform(utf8.decoder).join();
+      final payload = jsonDecode(body) as Map<String, dynamic>;
       final newUserId = payload['userId']?.toString();
       final newUsername = payload['username']?.toString();
       final newAvatarUrl = payload['avatarUrl']?.toString() ?? '';
@@ -1082,11 +1238,10 @@ class _AccountShareWebViewState extends State<AccountShareWebView> {
       AlertBridge.showNotification(context, 'Shared login saved.');
     } catch (error) {
       if (!mounted) return;
-      AlertBridge.showNotification(
-        context,
-        'Login failed: invalid shared payload.',
-        isFailureState: true,
-      );
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Login failed: unable to retrieve shared payload.';
+      });
     }
   }
 
@@ -1096,7 +1251,39 @@ class _AccountShareWebViewState extends State<AccountShareWebView> {
       appBar: AppBar(
         title: const Text('Shared Login'),
       ),
-      body: WebViewWidget(controller: _controller),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_isLoading) ...[
+                const CircularProgressIndicator(),
+                const SizedBox(height: 18.0),
+                const Text('Completing shared login...'),
+              ] else ...[
+                Icon(
+                  Icons.error_outline,
+                  size: 64,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                const SizedBox(height: 18.0),
+                Text(
+                  _errorMessage ?? 'Unable to complete login.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 18.0),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('Back'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1174,30 +1361,155 @@ class MultiMediaMessageEngine extends StatelessWidget {
                           children: [
                             if (payload.attachmentUrl != null &&
                                 payload.attachmentUrl!.isNotEmpty) ...[
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(12.0),
-                                child: Image.network(
-                                  payload.attachmentUrl!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const NetworkRecoveryFallbackWidget();
+                              if (_looksLikeImageUrl(payload.attachmentUrl!))
+                                GestureDetector(
+                                  onTap: () {
+                                    _openUrl(context, payload.attachmentUrl!);
                                   },
-                                  loadingBuilder:
-                                      (context, child, loadingProgress) {
-                                        if (loadingProgress == null) {
-                                          return child;
-                                        }
-                                        return Container(
-                                          height: 150,
-                                          width: 200,
-                                          color: colors.surfaceContainerHigh,
-                                          child: const Center(
-                                            child: CircularProgressIndicator(),
+                                  child: Stack(
+                                    alignment: Alignment.bottomRight,
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(12.0),
+                                        child: Image.network(
+                                          payload.attachmentUrl!,
+                                          fit: BoxFit.cover,
+                                          width: double.infinity,
+                                          height: 180,
+                                          errorBuilder:
+                                              (context, error, stackTrace) {
+                                            return const NetworkRecoveryFallbackWidget();
+                                          },
+                                          loadingBuilder:
+                                              (context, child, loadingProgress) {
+                                            if (loadingProgress == null) {
+                                              return child;
+                                            }
+                                            return Container(
+                                              height: 180,
+                                              color: colors.surfaceContainerHigh,
+                                              child: const Center(
+                                                child: CircularProgressIndicator(),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      Container(
+                                        margin: const EdgeInsets.all(12.0),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10.0,
+                                          vertical: 6.0,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withOpacity(0.52),
+                                          borderRadius:
+                                              BorderRadius.circular(16.0),
+                                        ),
+                                        child: Text(
+                                          'Open',
+                                          style: TextStyle(
+                                            fontSize: 12.0,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600,
                                           ),
-                                        );
-                                      },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else
+                                Container(
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: isMe
+                                        ? colors.primary.withOpacity(0.12)
+                                        : colors.surfaceVariant,
+                                    borderRadius: BorderRadius.circular(14.0),
+                                  ),
+                                  padding: const EdgeInsets.all(14.0),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  _attachmentIconForUrl(
+                                                      payload.attachmentUrl!),
+                                                  size: 28,
+                                                  color: isMe
+                                                      ? colors.onPrimaryContainer
+                                                      : colors.primary,
+                                                ),
+                                                const WidgetSpacer(width: 12.0),
+                                                Expanded(
+                                                  child: Text(
+                                                    _attachmentLabelForUrl(
+                                                        payload.attachmentUrl!),
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.w600,
+                                                      color: isMe
+                                                          ? colors.onPrimaryContainer
+                                                          : colors.onSurface,
+                                                    ),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const WidgetSpacer(height: 10.0),
+                                            Text(
+                                              payload.attachmentUrl!,
+                                              style: TextStyle(
+                                                color: isMe
+                                                    ? colors.onPrimaryContainer
+                                                    : colors.onSurfaceVariant,
+                                                fontSize: 12.5,
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const WidgetSpacer(height: 12.0),
+                                            Align(
+                                              alignment: Alignment.centerRight,
+                                              child: TextButton.icon(
+                                                onPressed: () {
+                                                  _openUrl(
+                                                      context, payload.attachmentUrl!);
+                                                },
+                                                icon: Icon(
+                                                  Icons.open_in_new,
+                                                  size: 18,
+                                                  color: isMe
+                                                      ? colors.onPrimaryContainer
+                                                      : colors.primary,
+                                                ),
+                                                label: Text(
+                                                  'Open',
+                                                  style: TextStyle(
+                                                    color: isMe
+                                                        ? colors.onPrimaryContainer
+                                                        : colors.primary,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
                               if (payload.message.isNotEmpty)
                                 const WidgetSpacer(height: 8.0),
                             ],
@@ -1484,58 +1796,281 @@ class TransmissionManager {
     Function(String, {String? mediaUrl}) callback,
   ) {
     final TextEditingController urlFieldController = TextEditingController();
+    final ValueNotifier<String> errorText = ValueNotifier<String>('');
+    final ValueNotifier<String> previewUrl = ValueNotifier<String>('');
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text("Attach Image URL"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Paste a direct link to an image (Imgur, Discord, etc):",
-              ),
-              const WidgetSpacer(height: 12.0),
-              TextField(
-                controller: urlFieldController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  hintText: "https://example.com/image.png",
-                  filled: true,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24.0)),
+      ),
+      builder: (BuildContext bottomSheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20.0,
+            right: 20.0,
+            top: 20.0,
+            bottom: MediaQuery.of(bottomSheetContext).viewInsets.bottom + 20,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text("Cancel"),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 48,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
+                const WidgetSpacer(height: 14.0),
+                Text(
+                  'Attach via URL',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const WidgetSpacer(height: 8.0),
+                Text(
+                  'Paste a direct link to an image or file. The attachment will appear in chat for everyone.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const WidgetSpacer(height: 18.0),
+                TextField(
+                  controller: urlFieldController,
+                  autofocus: true,
+                  keyboardType: TextInputType.url,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(
+                    labelText: 'Image or File URL',
+                    hintText: 'https://example.com/image.png',
+                    filled: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) {
+                    previewUrl.value = value.trim();
+                    errorText.value = '';
+                  },
+                ),
+                const WidgetSpacer(height: 16.0),
+                ValueListenableBuilder<String>(
+                  valueListenable: previewUrl,
+                  builder: (context, value, child) {
+                    if (value.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    if (!_isValidUrl(value)) {
+                      return Text(
+                        'Enter a valid HTTP or HTTPS URL to preview the attachment.',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: Theme.of(context).colorScheme.error),
+                      );
+                    }
+                    if (_looksLikeImageUrl(value)) {
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(16.0),
+                        child: Image.network(
+                          value,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: 180,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Container(
+                              width: double.infinity,
+                              height: 180,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surfaceVariant,
+                                borderRadius: BorderRadius.circular(16.0),
+                              ),
+                              child: const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              width: double.infinity,
+                              height: 180,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surfaceVariant,
+                                borderRadius: BorderRadius.circular(16.0),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'Cannot preview image URL.',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    }
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16.0),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceVariant,
+                        borderRadius: BorderRadius.circular(16.0),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                _attachmentIconForUrl(value),
+                                size: 24,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const WidgetSpacer(width: 12.0),
+                              Expanded(
+                                child: Text(
+                                  _attachmentLabelForUrl(value),
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const WidgetSpacer(height: 10.0),
+                          Text(
+                            value,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                const WidgetSpacer(height: 16.0),
+                ValueListenableBuilder<String>(
+                  valueListenable: errorText,
+                  builder: (context, value, child) {
+                    if (value.isEmpty) return const SizedBox.shrink();
+                    return Text(
+                      value,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: Theme.of(context).colorScheme.error),
+                    );
+                  },
+                ),
+                const WidgetSpacer(height: 18.0),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(bottomSheetContext),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const WidgetSpacer(width: 12.0),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () {
+                          final String uriInput = urlFieldController.text.trim();
+                          if (uriInput.isNotEmpty && _isValidUrl(uriInput)) {
+                            callback('', mediaUrl: uriInput);
+                            Navigator.pop(bottomSheetContext);
+                            AlertBridge.showNotification(
+                              context,
+                              _looksLikeImageUrl(uriInput)
+                                  ? 'Image attached.'
+                                  : 'File attached.',
+                            );
+                          } else {
+                            errorText.value =
+                                'Please enter a valid HTTP or HTTPS URL.';
+                          }
+                        },
+                        child: const Text('Send Attachment'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            FilledButton(
-              onPressed: () {
-                final String uriInput = urlFieldController.text.trim();
-                if (uriInput.isNotEmpty &&
-                    (uriInput.startsWith("http://") ||
-                        uriInput.startsWith("https://"))) {
-                  callback("", mediaUrl: uriInput);
-                  Navigator.pop(dialogContext);
-                  AlertBridge.showNotification(context, "Image attached.");
-                } else {
-                  AlertBridge.showNotification(
-                    context,
-                    "Please enter a valid HTTP/HTTPS URL.",
-                    isFailureState: true,
-                  );
-                }
-              },
-              child: const Text("Send Image"),
-            ),
-          ],
+          ),
         );
       },
+    );
+  }
+}
+
+bool _isValidUrl(String value) {
+  return value.startsWith('http://') || value.startsWith('https://');
+}
+
+bool _looksLikeImageUrl(String url) {
+  final lower = url.toLowerCase();
+  return lower.endsWith('.png') ||
+      lower.endsWith('.jpg') ||
+      lower.endsWith('.jpeg') ||
+      lower.endsWith('.webp') ||
+      lower.endsWith('.gif') ||
+      lower.endsWith('.bmp') ||
+      lower.contains('image');
+}
+
+String _attachmentLabelForUrl(String url) {
+  final filename = Uri.tryParse(url)?.pathSegments.last ?? url;
+  if (_looksLikeImageUrl(url)) {
+    return 'Image preview';
+  }
+  return filename.isNotEmpty ? filename : 'File attachment';
+}
+
+IconData _attachmentIconForUrl(String url) {
+  final lower = url.toLowerCase();
+  if (lower.endsWith('.pdf')) return Icons.picture_as_pdf;
+  if (lower.endsWith('.zip') || lower.endsWith('.rar')) return Icons.archive;
+  if (lower.endsWith('.mp3') || lower.endsWith('.wav')) return Icons.audiotrack;
+  if (lower.endsWith('.mp4') || lower.endsWith('.mov')) return Icons.movie;
+  if (lower.endsWith('.doc') || lower.endsWith('.docx')) return Icons.description;
+  if (lower.endsWith('.xls') || lower.endsWith('.xlsx')) return Icons.grid_view;
+  if (lower.endsWith('.ppt') || lower.endsWith('.pptx')) return Icons.slideshow;
+  return Icons.attach_file;
+}
+
+Future<void> _openUrl(BuildContext context, String url) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null) {
+    AlertBridge.showNotification(
+      context,
+      'Invalid attachment URL.',
+      isFailureState: true,
+    );
+    return;
+  }
+
+  try {
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      AlertBridge.showNotification(
+        context,
+        'Unable to open attachment.',
+        isFailureState: true,
+      );
+    }
+  } catch (_) {
+    AlertBridge.showNotification(
+      context,
+      'Unable to open attachment.',
+      isFailureState: true,
     );
   }
 }
