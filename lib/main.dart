@@ -13,6 +13,8 @@ import 'package:http/http.dart' as http;
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
+// webview_flutter caused build issues on web; open YouTube links externally instead
 import 'firebase_options.dart';
 
 const String kNotificationBackendUrl = String.fromEnvironment(
@@ -33,6 +35,610 @@ final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await _showLocalNotification(message);
+}
+
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Settings')),
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          Text('Theme Color', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: ThemeColorPicker.palette.map((color) {
+              final bool isSelected = color.toARGB32() == EnterpriseSession.themeSeed.toARGB32();
+              return GestureDetector(
+                onTap: () async {
+                  await EnterpriseSession.setThemeSeedColor(color);
+                  final hex = '#${color.value.toRadixString(16).padLeft(8, '0').toUpperCase()}';
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Theme color set to $hex')));
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                    border: isSelected ? Border.all(color: Colors.white, width: 3.0) : null,
+                  ),
+                  child: isSelected ? const Icon(Icons.check, color: Colors.white) : null,
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 24),
+          Text('Theme Style', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<String>(
+            valueListenable: EnterpriseSession.themeVariantNotifier,
+            builder: (context, current, _) {
+              return Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(label: const Text('Light'), selected: current == 'light', onSelected: (_) => EnterpriseSession.setThemeVariant('light')),
+                  ChoiceChip(label: const Text('Dark'), selected: current == 'dark', onSelected: (_) => EnterpriseSession.setThemeVariant('dark')),
+                  ChoiceChip(label: const Text('Amoled'), selected: current == 'amoled', onSelected: (_) => EnterpriseSession.setThemeVariant('amoled')),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+          Text('Notifications', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<bool>(
+            valueListenable: EnterpriseSession.notificationsEnabledNotifier,
+            builder: (context, enabled, _) {
+              return SwitchListTile(
+                value: enabled,
+                title: const Text('Push Notifications'),
+                subtitle: const Text('Receive push notifications for new messages'),
+                onChanged: (v) async {
+                  await EnterpriseSession.setNotificationsEnabled(v);
+                  if (!kIsWeb) {
+                    try {
+                      if (v) {
+                        await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
+                        await FirebaseMessaging.instance.subscribeToTopic('group_chat');
+                      } else {
+                        await FirebaseMessaging.instance.unsubscribeFromTopic('group_chat');
+                      }
+                    } catch (_) {}
+                  }
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(v ? 'Notifications enabled' : 'Notifications disabled')));
+                },
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.notifications_active),
+            title: const Text('Send test notification'),
+            subtitle: const Text('Verify your phone can receive notifications'),
+            onTap: () async {
+              if (!EnterpriseSession.notificationsEnabled) {
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enable notifications first')));
+                return;
+              }
+              await _showLocalNotification(
+                RemoteMessage(
+                  notification: RemoteNotification(title: 'Test notification', body: 'This is a notification preview.'),
+                  data: const {'type': 'test'},
+                ),
+              );
+            },
+          ),
+          const Divider(),
+          Text('Quick Actions', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.refresh),
+            title: const Text('Reset appearance'),
+            subtitle: const Text('Return to default theme and style'),
+            onTap: () async {
+              await EnterpriseSession.setThemeSeedColor(const Color.fromARGB(255, 46, 154, 124));
+              await EnterpriseSession.setThemeVariant('light');
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Appearance reset')));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.copy),
+            title: const Text('Copy profile ID'),
+            subtitle: const Text('Copy your user ID to clipboard'),
+            onTap: () {
+              Clipboard.setData(ClipboardData(text: EnterpriseSession.userId));
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User ID copied')));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.share),
+            title: const Text('Copy share account link'),
+            subtitle: const Text('Copy your local share link for another device'),
+            onTap: () async {
+              final shareUrl = await LocalShareServer.instance.startServer();
+              await Clipboard.setData(ClipboardData(text: shareUrl));
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Share link copied')));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Logout'),
+            subtitle: const Text('Sign out and return to login'),
+            onTap: () async {
+              await EnterpriseSession.logout();
+              if (context.mounted) {
+                Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+              }
+            },
+          ),
+          const Divider(),
+          Text('About', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('App version'),
+            subtitle: const Text('1.9'),
+            onTap: () {},
+          ),
+          ListTile(
+            leading: const Icon(Icons.help_outline),
+            title: const Text('Chat commands'),
+            subtitle: const Text('/shrug, /tableflip, /unflip, /me, /roll, /joke, /help'),
+            onTap: () {
+              showDialog(
+                context: context,
+                builder: (dialogContext) {
+                  return AlertDialog(
+                    title: const Text('Commands'),
+                    content: const Text('/shrug, /tableflip, /unflip, /me <action>, /roll [NdM], /joke, /help'),
+                    actions: [TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Close'))],
+                  );
+                },
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+// -------------------------
+// Video Feed Screen
+// -------------------------
+
+class VideoFeedScreen extends StatefulWidget {
+  const VideoFeedScreen({super.key});
+
+  @override
+  State<VideoFeedScreen> createState() => _VideoFeedScreenState();
+}
+
+class _VideoFeedScreenState extends State<VideoFeedScreen> {
+  final TextEditingController _urlController = TextEditingController();
+  final DatabaseReference _ref = FirebaseDatabase.instance.ref('video_feed');
+  StreamSubscription<DatabaseEvent>? _sub;
+  List<Map<String, dynamic>> _videos = [];
+  bool _isUploading = false;
+  final Map<String, Map<String, dynamic>> _oembedCache = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _listen();
+  }
+
+  void _listen() {
+    _sub = _ref.onValue.listen((event) {
+      final data = event.snapshot.value as Map<dynamic, dynamic>?;
+      final list = <Map<String, dynamic>>[];
+      if (data != null) {
+        data.forEach((key, value) {
+          final map = Map<String, dynamic>.from(value as Map);
+          map['id'] = key;
+          list.add(map);
+        });
+      }
+      list.sort((a, b) => (b['timestamp'] as int? ?? 0).compareTo(a['timestamp'] as int? ?? 0));
+      setState(() => _videos = list);
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _upload() async {
+    final url = _urlController.text.trim();
+    if (url.isEmpty) return;
+    setState(() => _isUploading = true);
+    try {
+      final entry = {
+        'url': url,
+        'uploaderId': EnterpriseSession.userId,
+        'uploaderName': EnterpriseSession.username,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      };
+      await _ref.push().set(entry);
+      _urlController.clear();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed')));
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  Future<void> _toggleLike(String videoId, Map<String, dynamic> video) async {
+    final likesRef = _ref.child(videoId).child('likes');
+    final userId = EnterpriseSession.userId;
+    final likes = Map<String, dynamic>.from(video['likes'] ?? {});
+    if (likes.containsKey(userId)) {
+      await likesRef.child(userId).remove();
+    } else {
+      await likesRef.update({userId: true});
+    }
+  }
+
+  Future<void> _openComments(String videoId) async {
+    final commentsRef = _ref.child(videoId).child('comments');
+    final TextEditingController c = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Comments'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                StreamBuilder<DatabaseEvent>(
+                  stream: commentsRef.onValue,
+                  builder: (context, snapshot) {
+                    final data = snapshot.data?.snapshot.value as Map<dynamic, dynamic>?;
+                    final list = <Map<String, dynamic>>[];
+                    if (data != null) {
+                      data.forEach((k, v) {
+                        final m = Map<String, dynamic>.from(v as Map);
+                        m['id'] = k;
+                        list.add(m);
+                      });
+                      list.sort((a, b) => (a['timestamp'] as int? ?? 0).compareTo(b['timestamp'] as int? ?? 0));
+                    }
+                    return SizedBox(
+                      height: 240,
+                      child: ListView.builder(
+                        itemCount: list.length,
+                        itemBuilder: (context, idx) {
+                          final cm = list[idx];
+                          return ListTile(
+                            title: Text(cm['username'] ?? 'Unknown'),
+                            subtitle: Text(cm['text'] ?? ''),
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                TextField(controller: c, decoration: const InputDecoration(hintText: 'Add a comment')),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
+            FilledButton(
+              onPressed: () async {
+                final text = c.text.trim();
+                if (text.isEmpty) return;
+                final comment = {
+                  'userId': EnterpriseSession.userId,
+                  'username': EnterpriseSession.username,
+                  'text': text,
+                  'timestamp': DateTime.now().millisecondsSinceEpoch,
+                };
+                await commentsRef.push().set(comment);
+                c.clear();
+              },
+              child: const Text('Post'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Video Feed')),
+      body: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _urlController,
+                    decoration: const InputDecoration(hintText: 'Direct video URL'),
+                    keyboardType: TextInputType.url,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _isUploading ? null : _upload,
+                  child: _isUploading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Upload'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _videos.length,
+                itemBuilder: (context, index) {
+                  final v = _videos[index];
+                  final likes = Map<String, dynamic>.from(v['likes'] ?? {});
+                  final likeCount = likes.length;
+                  final comments = Map<String, dynamic>.from(v['comments'] ?? {});
+                  final commentCount = comments.length;
+                  return Card(
+                    child: ListTile(
+                      title: Text(v['uploaderName'] ?? 'Unknown'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Builder(builder: (context) {
+                            final url = (v['url'] ?? '').toString();
+                            final isVideo = url.endsWith('.mp4') || url.endsWith('.webm') || url.endsWith('.mov') || url.endsWith('.mkv');
+                            final ytId = extractYoutubeId(url);
+                                      if (ytId != null) {
+                                        return YouTubeEmbed(url: url, cache: _oembedCache);
+                                      }
+                            if (isVideo) {
+                              return GestureDetector(
+                                onTap: () {
+                                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => VideoPlayerScreen(url: url)));
+                                },
+                                child: Container(
+                                  height: 200,
+                                  color: Colors.black12,
+                                  child: Center(
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: const [
+                                        Icon(Icons.play_circle_fill, size: 48),
+                                        SizedBox(width: 8),
+                                        Text('Play video', style: TextStyle(fontWeight: FontWeight.w600)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            return SelectableText(url, maxLines: 2);
+                          }),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              IconButton(
+                                onPressed: () => _toggleLike(v['id'] as String, v),
+                                icon: Icon(likes.containsKey(EnterpriseSession.userId) ? Icons.favorite : Icons.favorite_border, color: likes.containsKey(EnterpriseSession.userId) ? Colors.red : null),
+                              ),
+                              Text('$likeCount'),
+                              const SizedBox(width: 12),
+                              IconButton(
+                                onPressed: () => _openComments(v['id'] as String),
+                                icon: const Icon(Icons.comment),
+                              ),
+                              Text('$commentCount'),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class VideoPlayerScreen extends StatefulWidget {
+  final String url;
+  const VideoPlayerScreen({super.key, required this.url});
+
+  @override
+  State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
+}
+
+class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
+  late VideoPlayerController _controller;
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.network(widget.url)
+      ..initialize().then((_) {
+        setState(() => _initialized = true);
+        _controller.play();
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.pause();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Video')),
+      body: Center(
+        child: _initialized
+            ? AspectRatio(
+                aspectRatio: _controller.value.aspectRatio,
+                child: VideoPlayer(_controller),
+              )
+            : const CircularProgressIndicator(),
+      ),
+      floatingActionButton: _initialized
+          ? FloatingActionButton(
+              onPressed: () => setState(() => _controller.value.isPlaying ? _controller.pause() : _controller.play()),
+              child: Icon(_controller.value.isPlaying ? Icons.pause : Icons.play_arrow),
+            )
+          : null,
+    );
+  }
+}
+
+String? extractYoutubeId(String url) {
+  try {
+    final uri = Uri.parse(url);
+    if (uri.host.contains('youtube.com')) {
+      return uri.queryParameters['v'];
+    }
+    if (uri.host == 'youtu.be') {
+      return uri.pathSegments.isNotEmpty ? uri.pathSegments[0] : null;
+    }
+    final m = RegExp(r'youtube\.com/embed/([A-Za-z0-9_-]{11})').firstMatch(url);
+    if (m != null) return m.group(1);
+  } catch (e) {
+    return null;
+  }
+  return null;
+}
+
+class YouTubePlayerScreen extends StatefulWidget {
+  final String videoId;
+  const YouTubePlayerScreen({super.key, required this.videoId});
+
+  @override
+  State<YouTubePlayerScreen> createState() => _YouTubePlayerScreenState();
+}
+
+class _YouTubePlayerScreenState extends State<YouTubePlayerScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final watchUrl = 'https://www.youtube.com/watch?v=${widget.videoId}';
+    return Scaffold(
+      appBar: AppBar(title: const Text('YouTube')),
+      body: Center(
+        child: FilledButton.icon(
+          icon: const Icon(Icons.open_in_new),
+          label: const Text('Open on YouTube'),
+          onPressed: () async {
+            final uri = Uri.parse(watchUrl);
+            if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open YouTube')));
+              }
+            }
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class YouTubeEmbed extends StatefulWidget {
+  final String url;
+  final Map<String, Map<String, dynamic>> cache;
+  const YouTubeEmbed({super.key, required this.url, required this.cache});
+
+  @override
+  State<YouTubeEmbed> createState() => _YouTubeEmbedState();
+}
+
+class _YouTubeEmbedState extends State<YouTubeEmbed> {
+  Map<String, dynamic>? _data;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final url = widget.url;
+    if (widget.cache.containsKey(url)) {
+      setState(() => _data = widget.cache[url]);
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final oembedUrl = Uri.parse('https://www.youtube.com/oembed?url=${Uri.encodeFull(url)}&format=json');
+      final resp = await http.get(oembedUrl).timeout(const Duration(seconds: 8));
+      if (resp.statusCode == 200) {
+        final jsonData = jsonDecode(resp.body) as Map<String, dynamic>;
+        widget.cache[url] = jsonData;
+        if (mounted) setState(() => _data = jsonData);
+      }
+    } catch (e) {
+      // ignore errors, we'll fallback to thumbnail
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = widget.url;
+    final id = extractYoutubeId(url);
+    final thumb = _data != null ? (_data!['thumbnail_url'] as String?) : null;
+    final title = _data != null ? (_data!['title'] as String?) : null;
+    final author = _data != null ? (_data!['author_name'] as String?) : null;
+
+    return GestureDetector(
+      onTap: () async {
+        final uri = Uri.parse('https://www.youtube.com/watch?v=$id');
+        if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open YouTube')));
+        }
+      },
+      child: Card(
+        clipBehavior: Clip.hardEdge,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 200,
+              child: thumb != null
+                  ? Image.network(thumb, fit: BoxFit.cover)
+                  : id != null
+                      ? Image.network('https://img.youtube.com/vi/$id/hqdefault.jpg', fit: BoxFit.cover)
+                      : Container(color: Colors.black12),
+            ),
+            ListTile(
+              title: Text(title ?? 'YouTube Video'),
+              subtitle: Text(author ?? ''),
+              trailing: _loading ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)) : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 Future<void> _showLocalNotification(RemoteMessage message) async {
@@ -82,12 +688,14 @@ Future<void> _initializeFirebaseMessaging() async {
     return;
   }
 
-  if (!kIsWeb) {
+  if (!kIsWeb && EnterpriseSession.notificationsEnabled) {
     await FirebaseMessaging.instance.subscribeToTopic('group_chat');
   }
 
   FirebaseMessaging.onMessage.listen((message) async {
-    await _showLocalNotification(message);
+    if (EnterpriseSession.notificationsEnabled) {
+      await _showLocalNotification(message);
+    }
   });
 
   FirebaseMessaging.onMessageOpenedApp.listen((message) {
@@ -122,6 +730,10 @@ class EnterpriseSession {
   static Color themeSeedColor = const Color.fromARGB(255, 46, 154, 124);
   static final ValueNotifier<Color> themeSeedColorNotifier =
       ValueNotifier<Color>(themeSeedColor);
+  static String themeVariant = 'light'; // 'light' | 'dark' | 'amoled'
+  static final ValueNotifier<String> themeVariantNotifier = ValueNotifier<String>(themeVariant);
+  static bool notificationsEnabled = true;
+  static final ValueNotifier<bool> notificationsEnabledNotifier = ValueNotifier<bool>(notificationsEnabled);
 
   // Initialize SharedPreferences
   static Future<void> initializePreferences() async {
@@ -138,6 +750,10 @@ class EnterpriseSession {
     themeSeedColor = Color(
       _prefs.getInt('themeSeedColor') ?? themeSeedColor.toARGB32(),
     );
+    themeVariant = _prefs.getString('themeVariant') ?? 'light';
+    themeVariantNotifier.value = themeVariant;
+    notificationsEnabled = _prefs.getBool('notificationsEnabled') ?? true;
+    notificationsEnabledNotifier.value = notificationsEnabled;
     themeSeedColorNotifier.value = themeSeedColor;
   }
 
@@ -147,6 +763,20 @@ class EnterpriseSession {
     themeSeedColor = color;
     themeSeedColorNotifier.value = color;
     await _prefs.setInt('themeSeedColor', color.toARGB32());
+  }
+
+  static String get currentThemeVariant => themeVariantNotifier.value;
+
+  static Future<void> setThemeVariant(String variant) async {
+    themeVariant = variant;
+    themeVariantNotifier.value = variant;
+    await _prefs.setString('themeVariant', variant);
+  }
+
+  static Future<void> setNotificationsEnabled(bool enabled) async {
+    notificationsEnabled = enabled;
+    notificationsEnabledNotifier.value = enabled;
+    await _prefs.setBool('notificationsEnabled', enabled);
   }
 
   // Initialize session and persist to SharedPreferences
@@ -390,6 +1020,45 @@ class ThemeColorPicker {
                 }).toList(),
               ),
               const SizedBox(height: 20.0),
+              const SizedBox(height: 12.0),
+              Text('Theme style', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8.0),
+              ValueListenableBuilder<String>(
+                valueListenable: EnterpriseSession.themeVariantNotifier,
+                builder: (context, current, _) {
+                  return Row(
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Light'),
+                        selected: current == 'light',
+                        onSelected: (v) async {
+                          await EnterpriseSession.setThemeVariant('light');
+                          if (context.mounted) Navigator.of(context).pop();
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('Dark'),
+                        selected: current == 'dark',
+                        onSelected: (v) async {
+                          await EnterpriseSession.setThemeVariant('dark');
+                          if (context.mounted) Navigator.of(context).pop();
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('Amoled'),
+                        selected: current == 'amoled',
+                        onSelected: (v) async {
+                          await EnterpriseSession.setThemeVariant('amoled');
+                          if (context.mounted) Navigator.of(context).pop();
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 12.0),
               Center(
                 child: Text(
                   'Your selection is saved automatically.',
@@ -434,34 +1103,48 @@ class _ReyaanshCoreAppState extends State<ReyaanshCoreApp> {
     return ValueListenableBuilder<Color>(
       valueListenable: EnterpriseSession.themeSeedColorNotifier,
       builder: (context, seedColor, child) {
-        return MaterialApp(
-          title: 'Reyaansh Chat',
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            useMaterial3: true,
-            brightness: Brightness.light,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: seedColor,
+        return ValueListenableBuilder<String>(
+          valueListenable: EnterpriseSession.themeVariantNotifier,
+          builder: (context, variant, _) {
+            final ThemeData light = ThemeData(
+              useMaterial3: true,
               brightness: Brightness.light,
-            ).copyWith(surfaceContainerHigh: const Color(0xFFF4F6E7)),
-            textTheme: const TextTheme(
-              bodyLarge: TextStyle(
-                fontSize: 16.0,
-                fontWeight: FontWeight.normal,
+              colorScheme: ColorScheme.fromSeed(seedColor: seedColor, brightness: Brightness.light).copyWith(surfaceContainerHigh: const Color(0xFFF4F6E7)),
+              textTheme: const TextTheme(
+                bodyLarge: TextStyle(fontSize: 16.0, fontWeight: FontWeight.normal),
+                bodyMedium: TextStyle(fontSize: 14.0, fontWeight: FontWeight.normal),
+                labelSmall: TextStyle(fontSize: 11.0, color: Colors.grey),
               ),
-              bodyMedium: TextStyle(
-                fontSize: 14.0,
-                fontWeight: FontWeight.normal,
-              ),
-              labelSmall: TextStyle(fontSize: 11.0, color: Colors.grey),
-            ),
-          ),
-          home: child,
+            );
+
+            final ThemeData dark = ThemeData(
+              useMaterial3: true,
+              brightness: Brightness.dark,
+              colorScheme: ColorScheme.fromSeed(seedColor: seedColor, brightness: Brightness.dark),
+            );
+
+            final ThemeData amoled = dark.copyWith(
+              scaffoldBackgroundColor: Colors.black,
+              canvasColor: Colors.black,
+              colorScheme: dark.colorScheme.copyWith(background: Colors.black, surface: Colors.black),
+            );
+
+            ThemeMode mode = ThemeMode.light;
+            if (variant == 'dark') mode = ThemeMode.dark;
+            if (variant == 'amoled') mode = ThemeMode.dark;
+
+            return MaterialApp(
+              title: 'Reyaansh Chat',
+              debugShowCheckedModeBanner: false,
+              theme: light,
+              darkTheme: variant == 'amoled' ? amoled : dark,
+              themeMode: mode,
+              home: child,
+            );
+          },
         );
       },
-      child: EnterpriseSession.isLoggedIn()
-          ? const ChatDashboard()
-          : const LoginScreen(),
+      child: EnterpriseSession.isLoggedIn() ? const ChatDashboard() : const LoginScreen(),
     );
   }
 }
@@ -573,7 +1256,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const WidgetSpacer(height: 24),
                     InkWell(
-                      onTap: () => ThemeColorPicker.open(context),
+                      onTap: () {
+                        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                      },
                       borderRadius: BorderRadius.circular(12.0),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -831,6 +1516,74 @@ class _ChatDashboardState extends State<ChatDashboard> {
   void _handleDispatch(String content, {String? mediaUrl}) {
     if (content.trim().isEmpty && mediaUrl == null) return;
 
+    // Handle slash commands locally
+    if (content.trim().startsWith('/')) {
+      final parts = content.trim().split(RegExp(r'\s+'));
+      final cmd = parts[0].toLowerCase();
+      final args = parts.length > 1 ? parts.sublist(1) : <String>[];
+
+      switch (cmd) {
+        case '/shrug':
+          content = '¯\\_(ツ)_/¯';
+          break;
+        case '/tableflip':
+          content = '(╯°□°）╯︵ ┻━┻';
+          break;
+        case '/unflip':
+          content = '┬─┬ ノ( ゜-゜ノ)';
+          break;
+        case '/me':
+          final action = args.join(' ');
+          if (action.isEmpty) {
+            // show help instead of sending
+            showDialog(
+              context: context,
+              builder: (c) => AlertDialog(title: const Text('Usage'), content: const Text('/me <action>'), actions: [TextButton(onPressed: () => Navigator.of(c).pop(), child: const Text('OK'))]),
+            );
+            return;
+          }
+          content = '*${EnterpriseSession.username} $action*';
+          break;
+        case '/roll':
+          final spec = args.isNotEmpty ? args[0] : '1d6';
+          final m = RegExp(r'(?:(\d+)d)?(\d+)').firstMatch(spec);
+          int times = 1;
+          int sides = 6;
+          if (m != null) {
+            if ((m.group(1) ?? '').isNotEmpty) times = int.tryParse(m.group(1)!) ?? 1;
+            sides = int.tryParse(m.group(2)!) ?? 6;
+          }
+          times = times.clamp(1, 100);
+          sides = sides.clamp(2, 1000);
+          final rnd = Random();
+          final rolls = List.generate(times, (_) => rnd.nextInt(sides) + 1);
+          final total = rolls.fold<int>(0, (a, b) => a + b);
+          content = '${EnterpriseSession.username} rolled $total (${rolls.join(', ')})';
+          break;
+        case '/joke':
+          final jokes = [
+            'Why did the developer go broke? Because he used up all his cache.',
+            'I told my computer I needed a break, and it said: "No problem — I’ll go to sleep."',
+            'There are only 10 types of people in the world: those who understand binary, and those who don’t.',
+          ];
+          content = jokes[Random().nextInt(jokes.length)];
+          break;
+        case '/help':
+          showDialog(
+            context: context,
+            builder: (c) => AlertDialog(
+              title: const Text('Commands'),
+              content: const Text('/shrug, /tableflip, /unflip, /me <action>, /roll [NdM], /joke'),
+              actions: [TextButton(onPressed: () => Navigator.of(c).pop(), child: const Text('Close'))],
+            ),
+          );
+          return;
+        default:
+          // unknown command; fallthrough and send as-is
+          break;
+      }
+    }
+
     final reference = FirebaseDatabase.instance.ref('messages').push();
     final messageId = reference.key ?? '';
     reference.set({
@@ -906,19 +1659,21 @@ class _ChatDashboardState extends State<ChatDashboard> {
     final text = value['text']?.toString() ?? '';
     final body = text.isNotEmpty ? text : 'Sent an attachment';
 
-    await _showLocalNotification(
-      RemoteMessage(
-        notification: RemoteNotification(
-          title: '$senderName sent a message',
-          body: body,
+    if (EnterpriseSession.notificationsEnabled) {
+      await _showLocalNotification(
+        RemoteMessage(
+          notification: RemoteNotification(
+            title: '$senderName sent a message',
+            body: body,
+          ),
+          data: {
+            'senderId': triggerId,
+            'messageId': event.snapshot.key ?? '',
+            'type': 'chat',
+          },
         ),
-        data: {
-          'senderId': triggerId,
-          'messageId': event.snapshot.key ?? '',
-          'type': 'chat',
-        },
-      ),
-    );
+      );
+    }
   }
 
   void _openAttachmentSequence() {
@@ -1087,10 +1842,24 @@ class _ChatDashboardState extends State<ChatDashboard> {
             tooltip: 'Share account',
           ),
           IconButton(
-            onPressed: () => ThemeColorPicker.open(context),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
             icon: const Icon(Icons.format_paint),
             color: colors.onPrimaryContainer,
-            tooltip: 'Pick theme color',
+            tooltip: 'Settings',
+          ),
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const VideoFeedScreen()),
+              );
+            },
+            icon: const Icon(Icons.video_library),
+            color: colors.onPrimaryContainer,
+            tooltip: 'Video Feed',
           ),
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
