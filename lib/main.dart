@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -63,11 +64,13 @@ Future<void> _showLocalNotification(RemoteMessage message) async {
   
 
 Future<void> _initializeFirebaseMessaging() async {
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  if (!kIsWeb) {
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  await _localNotificationsPlugin
-      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-      ?.createNotificationChannel(_chatNotificationChannel);
+    await _localNotificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(_chatNotificationChannel);
+  }
 
   final settings = await FirebaseMessaging.instance.requestPermission(
     alert: true,
@@ -79,7 +82,9 @@ Future<void> _initializeFirebaseMessaging() async {
     return;
   }
 
-  await FirebaseMessaging.instance.subscribeToTopic('group_chat');
+  if (!kIsWeb) {
+    await FirebaseMessaging.instance.subscribeToTopic('group_chat');
+  }
 
   FirebaseMessaging.onMessage.listen((message) async {
     await _showLocalNotification(message);
@@ -187,6 +192,9 @@ class EnterpriseSession {
     return userId.isNotEmpty && username.isNotEmpty;
   }
 }
+
+// QR scanning via native camera was removed to maintain web compatibility.
+// Instead a small paste-url dialog is used across platforms.
 
 class LocalShareServer {
   LocalShareServer._();
@@ -951,9 +959,20 @@ class _ChatDashboardState extends State<ChatDashboard> {
           actions: [
             TextButton(
               onPressed: () {
+                Clipboard.setData(ClipboardData(text: localIpUrl));
                 Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Link copied to clipboard')),
+                );
               },
-              child: const Text('Close'),
+              child: const Text('Copy'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _launchExternal(localIpUrl);
+              },
+              child: const Text('Open Externally'),
             ),
             FilledButton(
               onPressed: () {
@@ -973,6 +992,58 @@ class _ChatDashboardState extends State<ChatDashboard> {
       MaterialPageRoute(
         builder: (context) => AccountShareReceiver(url: url),
       ),
+    );
+  }
+
+  Future<void> _launchExternal(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    try {
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not launch URL externally')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not launch URL')),
+      );
+    }
+  }
+
+  void _showPasteUrlDialog() {
+    final TextEditingController controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Enter shared link'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(hintText: 'Paste link here'),
+            keyboardType: TextInputType.url,
+            autofillHints: const [AutofillHints.url],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final text = controller.text.trim();
+                if (text.isNotEmpty) {
+                  Navigator.of(context).pop();
+                  _openShareLink(text);
+                }
+              },
+              child: const Text('Open'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1001,6 +1072,14 @@ class _ChatDashboardState extends State<ChatDashboard> {
         foregroundColor: colors.onPrimaryContainer,
         elevation: 1,
         actions: [
+          IconButton(
+            onPressed: () {
+              _showPasteUrlDialog();
+            },
+            icon: const Icon(Icons.qr_code_scanner),
+            color: colors.onPrimaryContainer,
+            tooltip: 'Scan/Paste Link',
+          ),
           IconButton(
             onPressed: _showAccountShareDialog,
             icon: const Icon(Icons.qr_code),
