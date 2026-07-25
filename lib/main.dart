@@ -724,7 +724,7 @@ Active since app launch
             subtitle: const Text('Auto-switch at 9PM - 7AM'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
             onTap: () {
-              _showToast(context, 'Scheduled dark mode enabled\n9:00 PM - 7:00 AM');
+              _showDarkModeScheduleDialog(context);
             },
           ),
           ValueListenableBuilder<bool>(
@@ -1868,6 +1868,50 @@ Active since app launch
                 _showToast(context, 'Proxy settings configured ✓');
               },
               child: const Text('Configure'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showDarkModeScheduleDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Dark Mode Schedule'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Text('Automatic Dark Mode', style: TextStyle(fontWeight: FontWeight.w600)),
+              SizedBox(height: 12),
+              Text('Enable dark mode at:', style: TextStyle(fontWeight: FontWeight.w500)),
+              SizedBox(height: 8),
+              Text('Start Time: 9:00 PM'),
+              Text('End Time: 7:00 AM'),
+              SizedBox(height: 16),
+              Text('Benefits:', style: TextStyle(fontWeight: FontWeight.w500)),
+              SizedBox(height: 8),
+              Text('✓ Reduces eye strain at night'),
+              Text('✓ Saves battery on OLED displays'),
+              Text('✓ Better sleep quality'),
+              Text('✓ Customizable schedule'),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showToast(context, 'Dark mode schedule enabled ✓\n9:00 PM - 7:00 AM');
+              },
+              child: const Text('Enable'),
             ),
           ],
         );
