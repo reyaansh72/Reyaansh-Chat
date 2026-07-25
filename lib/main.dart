@@ -866,7 +866,19 @@ Active since app launch
     try {
       final latest = _parseVersion(latestVersion);
       final current = _parseVersion(currentVersion);
-      return latest.compareTo(current) > 0;
+      
+      // Compare version arrays element by element
+      final maxLength = latest.length > current.length ? latest.length : current.length;
+      
+      for (int i = 0; i < maxLength; i++) {
+        final latestPart = i < latest.length ? latest[i] : 0;
+        final currentPart = i < current.length ? current[i] : 0;
+        
+        if (latestPart > currentPart) return true;
+        if (latestPart < currentPart) return false;
+      }
+      
+      return false; // Versions are equal
     } catch (e) {
       return false;
     }
