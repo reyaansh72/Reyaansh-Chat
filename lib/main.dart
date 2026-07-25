@@ -36,27 +36,29 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 Future<void> _showLocalNotification(RemoteMessage message) async {
   final remoteNotification = message.notification;
-
   if (remoteNotification == null) return;
 
   final notificationDetails = NotificationDetails(
-  android: AndroidNotificationDetails(
-    _chatNotificationChannel.id,
-    _chatNotificationChannel.name,
-    channelDescription: _chatNotificationChannel.description,
-    importance: Importance.high,
-    priority: Priority.high,
-    ticker: 'ticker',
-  ),
-);
+    android: AndroidNotificationDetails(
+      _chatNotificationChannel.id,
+      _chatNotificationChannel.name,
+      channelDescription: _chatNotificationChannel.description,
+      importance: Importance.high,
+      priority: Priority.high,
+      ticker: 'ticker',
+    ),
+  );
 
-await _localNotificationsPlugin.show(
-  remoteNotification.hashCode,
-  remoteNotification.title,
-  remoteNotification.body,
-  notificationDetails: notificationDetails, // 1. Must be passed as a named argument
-  payload: message.data['click_action']?.toString() ?? '', // 2. Safe string conversion
-);
+  await _localNotificationsPlugin.show(
+    remoteNotification.hashCode,
+    remoteNotification.title,
+    remoteNotification.body,
+    notificationDetails: notificationDetails,
+    payload: message.data['click_action']?.toString() ?? '',
+  );
+} // <--- Make sure this closing brace exists!
+
+  
   
 
 Future<void> _initializeFirebaseMessaging() async {
