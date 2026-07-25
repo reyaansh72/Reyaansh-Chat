@@ -22,7 +22,7 @@ const String kNotificationBackendUrl = String.fromEnvironment(
 const AndroidNotificationChannel _chatNotificationChannel = AndroidNotificationChannel(
   'chat_messages',
   'Chat Messages',
-  description: 'Notifications for new group chat messages.',
+  description: 'Notifications for newupup group chat messages.',
   importance: Importance.high,
 );
 
