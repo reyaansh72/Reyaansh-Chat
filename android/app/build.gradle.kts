@@ -47,3 +47,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// ADD THIS BLOCK AT THE BOTTOM
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+}
