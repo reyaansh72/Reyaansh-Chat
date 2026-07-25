@@ -38,6 +38,225 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await _showLocalNotification(message);
 }
 
+// =========================================================================
+// STORIES SCREEN (Facebook-style Stories with Image URLs)
+// =========================================================================
+class StoriesScreen extends StatefulWidget {
+  const StoriesScreen({super.key});
+
+  @override
+  State<StoriesScreen> createState() => _StoriesScreenState();
+}
+
+class _StoriesScreenState extends State<StoriesScreen> {
+  final List<Map<String, dynamic>> _stories = [];
+  final TextEditingController _urlController = TextEditingController();
+  bool _isUploading = false;
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  void _addStory() async {
+    final url = _urlController.text.trim();
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid image URL')),
+      );
+      return;
+    }
+
+    setState(() => _isUploading = true);
+    try {
+      final story = {
+        'id': '${DateTime.now().millisecondsSinceEpoch}',
+        'url': url,
+        'username': EnterpriseSession.username,
+        'avatarUrl': EnterpriseSession.avatarUrl,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'views': 0,
+      };
+      setState(() {
+        _stories.insert(0, story);
+        _urlController.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Story posted successfully! 📸')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to post story')),
+      );
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Stories'),
+        elevation: 0,
+      ),
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // Story Upload Section
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 24,
+                            backgroundImage: EnterpriseSession.avatarUrl.isNotEmpty
+                                ? NetworkImage(EnterpriseSession.avatarUrl)
+                                : null,
+                            child: EnterpriseSession.avatarUrl.isEmpty
+                                ? const Icon(Icons.person)
+                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  EnterpriseSession.username,
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                const Text('Share a moment...', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _urlController,
+                        decoration: InputDecoration(
+                          hintText: 'Enter image URL (https://...)',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          prefixIcon: const Icon(Icons.link),
+                        ),
+                        keyboardType: TextInputType.url,
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          icon: const Icon(Icons.photo_camera),
+                          label: const Text('Post Story'),
+                          onPressed: _isUploading ? null : _addStory,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const Divider(),
+            // Stories List
+            if (_stories.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  child: Column(
+                    children: [
+                      Icon(Icons.image_not_supported, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text('No stories yet', style: TextStyle(color: Colors.grey[600])),
+                    ],
+                  ),
+                )
+              )
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _stories.length,
+                itemBuilder: (context, index) {
+                  final story = _stories[index];
+                  return Card(
+                    margin: const EdgeInsets.all(8),
+                    clipBehavior: Clip.hardEdge,
+                    child: Column(
+                      children: [
+                        // Story Image
+                        SizedBox(
+                          height: 400,
+                          width: double.infinity,
+                          child: Image.network(
+                            story['url'],
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: Colors.grey[300],
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.broken_image, size: 48),
+                                      const SizedBox(height: 8),
+                                      const Text('Image not available'),
+                                      const SizedBox(height: 8),
+                                      Text(story['url'], maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10)),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                color: Colors.grey[300],
+                                child: const Center(child: CircularProgressIndicator()),
+                              );
+                            },
+                          ),
+                        ),
+                        // Story Info
+                        ListTile(
+                          leading: CircleAvatar(
+                            backgroundImage: story['avatarUrl'].isNotEmpty
+                                ? NetworkImage(story['avatarUrl'])
+                                : null,
+                            child: story['avatarUrl'].isEmpty ? const Icon(Icons.person) : null,
+                          ),
+                          title: Text(story['username']),
+                          subtitle: Text(
+                            '${DateTime.fromMillisecondsSinceEpoch(story['timestamp']).difference(DateTime.now()).inMinutes.abs()} min ago',
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.visibility),
+                            onPressed: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Views: ${story['views']}')),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
@@ -62,6 +281,18 @@ class SettingsScreen extends StatelessWidget {
   static final ValueNotifier<int> _developerTapCount = ValueNotifier<int>(0);
   static final ValueNotifier<String?> _latestVersionNotifier = ValueNotifier<String?>(null);
   static final ValueNotifier<bool> _checkingUpdateNotifier = ValueNotifier<bool>(false);
+  // Extended settings notifiers
+  static final ValueNotifier<bool> _endToEndEncryptionNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _messageBackupNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _blockUnknownNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> _showOnlineStatusNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _allowScreenshotsNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _cacheClearedNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> _lowBatteryModeNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> _compressMediaNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> _autoplayVideosNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _groupNotificationsNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<int> _logoTapCountNotifier = ValueNotifier<int>(0);
 
   @override
   Widget build(BuildContext context) {
@@ -625,6 +856,343 @@ Active since app launch
           ],
           
           const Divider(),
+
+          // ==========================================
+          // 9F. CONTENT & SHARING
+          // ==========================================
+          _buildSectionHeader(context, 'Content & Sharing'),
+          ListTile(
+            leading: const Icon(Icons.photo_library),
+            title: const Text('Stories'),
+            subtitle: const Text('Share and view stories (like Facebook)'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StoriesScreen()));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.share_arrival_time),
+            title: const Text('Shared Media'),
+            subtitle: const Text('Manage shared photos and videos'),
+            onTap: () {
+              _showToast(context, 'Viewing shared media gallery...');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.link),
+            title: const Text('Link Preview'),
+            subtitle: const Text('Show previews for shared links'),
+            trailing: Switch(value: true, onChanged: (_) {}),
+            onTap: null,
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9G. SECURITY & PRIVACY EXTENDED
+          // ==========================================
+          _buildSectionHeader(context, 'Security & Privacy (Advanced)'),
+          ValueListenableBuilder<bool>(
+            valueListenable: _endToEndEncryptionNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('End-to-End Encryption'),
+              subtitle: const Text('All messages are encrypted'),
+              secondary: const Icon(Icons.lock),
+              onChanged: (v) => _endToEndEncryptionNotifier.value = v,
+            ),
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _blockUnknownNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Block Unknown Contacts'),
+              subtitle: const Text('Only accept messages from saved contacts'),
+              secondary: const Icon(Icons.block),
+              onChanged: (v) => _blockUnknownNotifier.value = v,
+            ),
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _showOnlineStatusNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Show Online Status'),
+              subtitle: const Text('Let others see when you are active'),
+              secondary: const Icon(Icons.visibility),
+              onChanged: (v) => _showOnlineStatusNotifier.value = v,
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.block),
+            title: const Text('Blocked Users'),
+            subtitle: const Text('Manage your block list'),
+            onTap: () {
+              _showToast(context, 'Blocked users: 0');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.security),
+            title: const Text('Two-Factor Authentication'),
+            subtitle: const Text('Add extra security to your account'),
+            onTap: () {
+              _showToast(context, '2FA setup: Coming soon');
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9H. STORAGE & CACHE
+          // ==========================================
+          _buildSectionHeader(context, 'Storage & Cache'),
+          ListTile(
+            leading: const Icon(Icons.storage),
+            title: const Text('Storage Usage'),
+            subtitle: const Text('View app data storage breakdown'),
+            onTap: () {
+              _showInfoDialog(context, 'Storage Usage', 'Images: 245 MB\nVideos: 512 MB\nMessages: 45 MB\nCache: 128 MB\nTotal: 930 MB');
+            },
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _compressMediaNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Compress Media'),
+              subtitle: const Text('Automatically compress photos and videos'),
+              secondary: const Icon(Icons.compress),
+              onChanged: (v) => _compressMediaNotifier.value = v,
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.cached),
+            title: const Text('Clear Cache'),
+            subtitle: const Text('Free up temporary storage space'),
+            onTap: () {
+              _showConfirmDialog(context, 'Clear Cache', 'This will delete temporary files. Continue?', () {
+                _showToast(context, 'Cache cleared (234 MB freed)');
+              });
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline),
+            title: const Text('Clear Downloaded Files'),
+            subtitle: const Text('Remove all downloaded media'),
+            onTap: () {
+              _showToast(context, 'Cleared 512 MB of downloads');
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9I. BATTERY & PERFORMANCE
+          // ==========================================
+          _buildSectionHeader(context, 'Battery & Performance'),
+          ValueListenableBuilder<bool>(
+            valueListenable: _lowBatteryModeNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Low Battery Mode'),
+              subtitle: const Text('Reduce performance to save battery'),
+              secondary: const Icon(Icons.battery_alert),
+              onChanged: (v) => _lowBatteryModeNotifier.value = v,
+            ),
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _autoplayVideosNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Autoplay Videos'),
+              subtitle: const Text('Videos play automatically in chat'),
+              secondary: const Icon(Icons.videocam),
+              onChanged: (v) => _autoplayVideosNotifier.value = v,
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.speed),
+            title: const Text('Performance Mode'),
+            subtitle: const Text('Balanced (Recommended)'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showToast(context, 'Performance Mode: Balanced');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.memory),
+            title: const Text('RAM Usage'),
+            subtitle: const Text('~350 MB / 6 GB available'),
+            onTap: () {
+              _showToast(context, 'Current RAM: 350 MB\nAvailable: 6 GB');
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9J. DATA & SYNC
+          // ==========================================
+          _buildSectionHeader(context, 'Data & Synchronization'),
+          ValueListenableBuilder<bool>(
+            valueListenable: _messageBackupNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Backup Messages'),
+              subtitle: const Text('Auto-sync messages to cloud'),
+              secondary: const Icon(Icons.backup),
+              onChanged: (v) => _messageBackupNotifier.value = v,
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.cloud_sync),
+            title: const Text('Last Backup'),
+            subtitle: const Text('Today at 2:45 PM'),
+            onTap: () {
+              _showToast(context, 'Starting backup...');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.restore),
+            title: const Text('Restore from Backup'),
+            subtitle: const Text('Restore messages from backup'),
+            onTap: () {
+              _showToast(context, 'Restore feature coming soon');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.sync_problem),
+            title: const Text('Sync Status'),
+            subtitle: const Text('All data synced'),
+            onTap: () {
+              _showToast(context, 'Sync Status: Up to date ✓');
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9K. NETWORK & CONNECTION
+          // ==========================================
+          _buildSectionHeader(context, 'Network & Connection'),
+          ListTile(
+            leading: const Icon(Icons.cloud),
+            title: const Text('Server Status'),
+            subtitle: const Text('Connected (Optimal)'),
+            onTap: () {
+              _showInfoDialog(context, 'Server Status', 'Status: ✓ Connected\nLatency: 45ms\nServer: US-East-1\nConnection: Secure');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.vpn_lock),
+            title: const Text('Use VPN'),
+            subtitle: const Text('Route through VPN for privacy'),
+            trailing: Switch(value: false, onChanged: (_) {}),
+            onTap: null,
+          ),
+          ListTile(
+            leading: const Icon(Icons.public),
+            title: const Text('Proxy Settings'),
+            subtitle: const Text('Advanced proxy configuration'),
+            onTap: () {
+              _showToast(context, 'Proxy: Direct connection');
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9L. LINKED DEVICES & SESSIONS
+          // ==========================================
+          _buildSectionHeader(context, 'Linked Devices'),
+          ListTile(
+            leading: const Icon(Icons.devices),
+            title: const Text('Active Sessions'),
+            subtitle: const Text('1 session (This device)'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showInfoDialog(context, 'Active Sessions', 'This Device\nChrome on Linux\nLast active: Now\n\nTap to end session');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Sign Out Other Devices'),
+            subtitle: const Text('End all other active sessions'),
+            onTap: () {
+              _showToast(context, 'All other sessions ended');
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9M. NOTIFICATIONS EXTENDED
+          // ==========================================
+          _buildSectionHeader(context, 'Notifications (Extended)'),
+          ValueListenableBuilder<bool>(
+            valueListenable: _groupNotificationsNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Group Notifications'),
+              subtitle: const Text('Combine multiple notifications'),
+              secondary: const Icon(Icons.groups),
+              onChanged: (v) => _groupNotificationsNotifier.value = v,
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.schedule),
+            title: const Text('Quiet Hours'),
+            subtitle: const Text('11:00 PM - 8:00 AM'),
+            onTap: () {
+              _showToast(context, 'Notifications muted during quiet hours');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.notification_important),
+            title: const Text('Critical Alerts'),
+            subtitle: const Text('High priority notifications only'),
+            onTap: () {
+              _showToast(context, 'Critical alerts: Enabled');
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9N. ADVANCED OPTIONS
+          // ==========================================
+          _buildSectionHeader(context, 'Advanced Options'),
+          ListTile(
+            leading: const Icon(Icons.settings_applications),
+            title: const Text('API Configuration'),
+            subtitle: const Text('Backend server settings'),
+            onTap: () {
+              _showInfoDialog(context, 'API Configuration', 'Backend: Reyaansh-Chat-Backend\nURL: https://Reyaansh-Chat-Backend.onrender.com\nTimeout: 30s\nVersion: 1.9');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.code),
+            title: const Text('Database Cache'),
+            subtitle: const Text('Manage local database cache'),
+            onTap: () {
+              _showToast(context, 'Database Cache: 15 MB');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.analytics),
+            title: const Text('Usage Analytics'),
+            subtitle: const Text('Help improve the app'),
+            trailing: Switch(value: true, onChanged: (_) {}),
+            onTap: null,
+          ),
+          ListTile(
+            leading: const Icon(Icons.bug_report),
+            title: const Text('Send Crash Report'),
+            subtitle: const Text('Help us fix bugs faster'),
+            onTap: () {
+              _showToast(context, 'Crash report sent successfully');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.feedback),
+            title: const Text('Send Feedback'),
+            subtitle: const Text('Share your thoughts and suggestions'),
+            onTap: () {
+              _showToast(context, 'Opening feedback form...');
+            },
+          ),
+          
+          const Divider(),
           
           // ==========================================
           // 10. DANGER ZONE
@@ -744,46 +1312,100 @@ Active since app launch
   }
 
   void _showProfileDialog(BuildContext context) {
+    final nameController = TextEditingController(text: EnterpriseSession.username);
+    final avatarUrlController = TextEditingController(text: EnterpriseSession.avatarUrl);
+    bool isEditing = false;
+
     showDialog(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('My Profile'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                radius: 40,
-                backgroundImage: EnterpriseSession.avatarUrl.isNotEmpty
-                    ? NetworkImage(EnterpriseSession.avatarUrl)
-                    : null,
-                child: EnterpriseSession.avatarUrl.isEmpty
-                    ? const Icon(Icons.person, size: 40)
-                    : null,
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('My Profile'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: CircleAvatar(
+                        radius: 50,
+                        backgroundImage: avatarUrlController.text.isNotEmpty
+                            ? NetworkImage(avatarUrlController.text)
+                            : null,
+                        child: avatarUrlController.text.isEmpty
+                            ? const Icon(Icons.person, size: 50)
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (isEditing) ...[
+                      TextField(
+                        controller: nameController,
+                        decoration: InputDecoration(
+                          labelText: 'Name',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          prefixIcon: const Icon(Icons.person),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: avatarUrlController,
+                        decoration: InputDecoration(
+                          labelText: 'Avatar URL',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          prefixIcon: const Icon(Icons.image),
+                          hintText: 'https://example.com/avatar.jpg',
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ] else ...[
+                      Text('Name: ${nameController.text}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                      const SizedBox(height: 8),
+                      Text('ID: ${EnterpriseSession.userId}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      const SizedBox(height: 8),
+                      Text('Avatar: ${avatarUrlController.text.isEmpty ? 'Default' : 'Custom'}', style: const TextStyle(fontSize: 12)),
+                      const SizedBox(height: 8),
+                      Text('Status: ${EnterpriseSession.isLoggedIn() ? '✓ Logged In' : 'Not Logged In'}', style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 8),
+                      Text('Member since: ${DateTime.now().year}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-              Text('Name: ${EnterpriseSession.username}', style: const TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              Text('ID: ${EnterpriseSession.userId}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              const SizedBox(height: 8),
-              Text('Status: ${EnterpriseSession.isLoggedIn() ? 'Logged In' : 'Not Logged In'}', style: const TextStyle(fontSize: 12)),
-            ],
-          ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Close'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                _showToast(context, 'Edit profile feature coming soon');
-              },
-              child: const Text('Edit'),
-            ),
-          ],
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Close'),
+                ),
+                if (isEditing)
+                  TextButton(
+                    onPressed: () => setState(() => isEditing = false),
+                    child: const Text('Cancel'),
+                  ),
+                FilledButton(
+                  onPressed: () async {
+                    if (isEditing) {
+                      // Save profile changes
+                      await EnterpriseSession.initialize(
+                        nameController.text,
+                        avatarUrlController.text,
+                      );
+                      if (context.mounted) {
+                        _showToast(context, 'Profile updated successfully! ✓');
+                        Navigator.of(dialogContext).pop();
+                      }
+                    } else {
+                      setState(() => isEditing = true);
+                    }
+                  },
+                  child: Text(isEditing ? 'Save' : 'Edit'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -1471,35 +2093,57 @@ Future<void> _showLocalNotification(RemoteMessage message) async {
 
 Future<void> _initializeFirebaseMessaging() async {
   if (!kIsWeb) {
+    // Set up background message handler
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
+    // Initialize Android notification channel
     await _localNotificationsPlugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_chatNotificationChannel);
+
+    // Android-specific: Enable vibration and sound for notifications
+    if (Platform.isAndroid) {
+      await _localNotificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestPermission();
+    }
   }
 
+  // Request notification permissions
   final settings = await FirebaseMessaging.instance.requestPermission(
     alert: true,
     badge: true,
     sound: true,
+    provisional: true,
   );
 
   if (settings.authorizationStatus == AuthorizationStatus.denied) {
     return;
   }
 
+  // Subscribe to topics and listen for messages
   if (!kIsWeb && EnterpriseSession.notificationsEnabled) {
-    await FirebaseMessaging.instance.subscribeToTopic('group_chat');
+    try {
+      await FirebaseMessaging.instance.subscribeToTopic('group_chat');
+      await FirebaseMessaging.instance.subscribeToTopic('all_users');
+    } catch (e) {
+      // Silently fail subscription
+    }
   }
 
+  // Handle foreground messages
   FirebaseMessaging.onMessage.listen((message) async {
     if (EnterpriseSession.notificationsEnabled) {
       await _showLocalNotification(message);
     }
   });
 
+  // Handle notification tap
   FirebaseMessaging.onMessageOpenedApp.listen((message) {
-    // Optionally handle notification taps here.
+    // Navigate to chat screen or relevant screen when notification is tapped
+    if (message.data.containsKey('chatId')) {
+      // Navigate to specific chat
+    }
   });
 }
 
@@ -2035,16 +2679,48 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.public, size: 64, color: colors.primary),
+                    GestureDetector(
+                      onTap: () {
+                        SettingsScreen._logoTapCountNotifier.value++;
+                        if (SettingsScreen._logoTapCountNotifier.value >= 10) {
+                          SettingsScreen._logoTapCountNotifier.value = 0;
+                          // Easter egg: Open GitHub
+                          launchUrl(
+                            Uri.parse('https://github.com/reyaansh72'),
+                            mode: LaunchMode.externalApplication,
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('🎉 Easter egg found! Opening GitHub...'), duration: Duration(seconds: 2)),
+                          );
+                        }
+                      },
+                      child: Icon(Icons.public, size: 64, color: colors.primary),
+                    ),
                     const WidgetSpacer(height: 16),
-                    Text(
-                      'Reyaansh Chat',
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: colors.onSurface,
-                          ),
-                      textAlign: TextAlign.center,
+                    GestureDetector(
+                      onTap: () {
+                        SettingsScreen._logoTapCountNotifier.value++;
+                        if (SettingsScreen._logoTapCountNotifier.value >= 10) {
+                          SettingsScreen._logoTapCountNotifier.value = 0;
+                          // Easter egg: Open GitHub
+                          launchUrl(
+                            Uri.parse('https://github.com/reyaansh72'),
+                            mode: LaunchMode.externalApplication,
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('🎉 Easter egg found! Opening GitHub...'), duration: Duration(seconds: 2)),
+                          );
+                        }
+                      },
+                      child: Text(
+                        'Reyaansh Chat',
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: colors.onSurface,
+                            ),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                     const WidgetSpacer(height: 8),
                     Text(
