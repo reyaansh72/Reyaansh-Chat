@@ -50,13 +50,14 @@ Future<void> _showLocalNotification(RemoteMessage message) async {
   );
 
   await _localNotificationsPlugin.show(
-    remoteNotification.hashCode,
-    remoteNotification.title,
-    remoteNotification.body,
+    id: remoteNotification.hashCode, // MUST be named 'id:'
+    title: remoteNotification.title,
+    body: remoteNotification.body,
     notificationDetails: notificationDetails,
     payload: message.data['click_action']?.toString() ?? '',
   );
-} // <--- Make sure this closing brace exists!
+}
+
 
   
   
