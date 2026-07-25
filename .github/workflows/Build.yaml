@@ -7,11 +7,10 @@ on:
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
   release:
+    name: 🤖 Android Build & Release
     runs-on: ubuntu-latest
 
     steps:
@@ -20,46 +19,35 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: ☕ Set up Java
+      - name: ☕ Setup Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
 
-      - name: 🐦 Set up Flutter
+      - name: 🐦 Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: 📦 Get packages
+      - name: 📦 Install dependencies
         run: flutter pub get
-
-      - name: 🌐 Build Web
-        run: |
-          flutter build web \
-            --release \
-            --base-href /Reyaansh-Chat/ \
-            --dart-define=NOTIFICATION_BACKEND_URL=https://reyaansh-chat-backend.onrender.com
 
       - name: 🤖 Build Android APK
         run: |
           flutter build apk \
             --release \
-            --dart-define=NOTIFICATION_BACKEND_URL=https://reyaansh-chat-backend.onrender.com
+            --dart-define=NOTIFICATION_BACKEND_URL=https://Reyaansh-Chat.onrender.com
 
-      - name: 📁 Package artifacts
+      - name: 📁 Prepare release artifacts
         run: |
           mkdir -p artifacts
-
-          cd build/web
-          zip -r ../../artifacts/Reyaansh-Chat-Web.zip .
-          cd ../..
 
           cp build/app/outputs/flutter-apk/app-release.apk \
              artifacts/Reyaansh-Chat-Android.apk
 
-      - name: 🏷 Generate next version
+      - name: 🏷 Generate version tag
         id: version
         shell: bash
         run: |
@@ -89,7 +77,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           if git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null; then
-            echo "Tag $TAG already exists; skipping tag creation."
+            echo "Tag $TAG already exists"
           else
             git tag "$TAG"
             git push origin "$TAG"
@@ -103,11 +91,4 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           generate_release_notes: true
           files: |
-            artifacts/Reyaansh-Chat-Web.zip
             artifacts/Reyaansh-Chat-Android.apk
-
-      - name: 📤 Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build/web
