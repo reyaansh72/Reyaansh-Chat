@@ -48,6 +48,52 @@ class StoriesScreen extends StatefulWidget {
   State<StoriesScreen> createState() => _StoriesScreenState();
 }
 
+class AboutScreen extends StatelessWidget {
+  const AboutScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('About')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const SizedBox(height: 8),
+            Icon(Icons.chat_bubble, size: 72, color: colors.primary),
+            const SizedBox(height: 12),
+            Text('Reyaansh Chat', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Text('Version ${SettingsScreen._currentVersion}', style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 16),
+            Text(
+              'A lightweight chat client focused on privacy and simplicity. This build exposes core features like themes, stories, profile editing, and updates. Advanced/debug features are intentionally removed for stability.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.gavel),
+              label: const Text('View Licenses'),
+              onPressed: () => showLicensePage(context: context, applicationName: 'Reyaansh Chat', applicationVersion: SettingsScreen._currentVersion),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              icon: const Icon(Icons.link),
+              label: const Text('Project on GitHub'),
+              onPressed: () => launchUrl(Uri.parse('https://github.com/reyaansh72'), mode: LaunchMode.externalApplication),
+            ),
+            const SizedBox(height: 18),
+            Text('Built with Flutter • © 2024', style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _StoriesScreenState extends State<StoriesScreen> {
   final List<Map<String, dynamic>> _stories = [];
   final TextEditingController _urlController = TextEditingController();
@@ -263,7 +309,7 @@ class SettingsScreen extends StatelessWidget {
   // ==========================================
   // APP VERSION CONSTANTS
   // ==========================================
-  static const String _currentVersion = '1.9';
+  static const String _currentVersion = '1.10';
   static const String _gitHubRepo = 'reyaansh72/Reyaansh-Chat';
   static const String _gitHubApiUrl = 'https://api.github.com/repos/reyaansh72/Reyaansh-Chat/releases';
 
@@ -345,6 +391,444 @@ class SettingsScreen extends StatelessWidget {
   static final ValueNotifier<bool> _typingStatusNotifier = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> _deviceSyncNotifier = ValueNotifier<bool>(true);
 
+  // Contact & Group Management
+  static final ValueNotifier<bool> _blockUnknownContactsNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> _groupManagementAdvancedNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _contactSyncNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _messageReactionsNotifier = ValueNotifier<bool>(true);
+
+  // Additional Features
+  static final ValueNotifier<bool> _messageEditingNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _messageDeleteAfterNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> _voiceMessageNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _videoMessageNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<String> _selectedThemeNotifier = ValueNotifier<String>('Light');
+  static final ValueNotifier<String> _languageNotifier = ValueNotifier<String>('English (US)');
+  static final ValueNotifier<String> _regionNotifier = ValueNotifier<String>('United States');
+  static final ValueNotifier<bool> _customWallpaperNotifier = ValueNotifier<bool>(false);
+  static bool _settingsLoading = false;
+
+  static Future<void> initializePreferences() async {
+    _registerPersistenceListeners();
+    _loadFromPreferences();
+  }
+
+  static void _registerPersistenceListeners() {
+    final saveBool = (String key, ValueNotifier<bool> notifier) {
+      notifier.addListener(() {
+        if (_settingsLoading) return;
+        EnterpriseSession._prefs.setBool(key, notifier.value);
+      });
+    };
+
+    final saveString = (String key, ValueNotifier<String> notifier) {
+      notifier.addListener(() {
+        if (_settingsLoading) return;
+        EnterpriseSession._prefs.setString(key, notifier.value);
+      });
+    };
+
+    final saveDouble = (String key, ValueNotifier<double> notifier) {
+      notifier.addListener(() {
+        if (_settingsLoading) return;
+        EnterpriseSession._prefs.setDouble(key, notifier.value);
+      });
+    };
+
+    saveBool('sendWithEnter', _sendWithEnterNotifier);
+    saveBool('readReceipts', _readReceiptsNotifier);
+    saveBool('typingIndicators', _typingIndicatorsNotifier);
+    saveBool('autoDownloadMedia', _autoDownloadMediaNotifier);
+    saveBool('incognitoKeyboard', _incognitoKeyboardNotifier);
+    saveBool('reduceMotion', _reduceMotionNotifier);
+    saveBool('dataSaver', _dataSaverNotifier);
+    saveDouble('chatFontSize', _chatFontSizeNotifier);
+    saveBool('endToEndEncryption', _endToEndEncryptionNotifier);
+    saveBool('messageBackup', _messageBackupNotifier);
+    saveBool('blockUnknown', _blockUnknownNotifier);
+    saveBool('showOnlineStatus', _showOnlineStatusNotifier);
+    saveBool('allowScreenshots', _allowScreenshotsNotifier);
+    saveBool('lowBatteryMode', _lowBatteryModeNotifier);
+    saveBool('compressMedia', _compressMediaNotifier);
+    saveBool('autoplayVideos', _autoplayVideosNotifier);
+    saveBool('groupNotifications', _groupNotificationsNotifier);
+    saveBool('linkPreview', _linkPreviewNotifier);
+    saveBool('autoBackupSettings', _autoBackupSettingsNotifier);
+    saveBool('vpnEnabled', _vpnEnabledNotifier);
+    saveBool('analyticsEnabled', _analyticsEnabledNotifier);
+    saveString('proxyType', _proxyTypeNotifier);
+    saveString('proxyHost', _proxyHostNotifier);
+    saveString('proxyPort', _proxyPortNotifier);
+    saveBool('dndEnabled', _dndEnabledNotifier);
+    saveString('dndStartTime', _dndStartTimeNotifier);
+    saveString('dndEndTime', _dndEndTimeNotifier);
+    saveBool('dndAllowEmergency', _dndAllowEmergencyNotifier);
+    saveString('currentStatus', _currentStatusNotifier);
+    saveString('statusMessage', _statusMessageNotifier);
+    saveBool('archiveChat', _archiveChatNotifier);
+    saveBool('pinChat', _pinChatNotifier);
+    saveBool('muteChat', _muteChatNotifier);
+    saveBool('enableDrafts', _enableDraftsNotifier);
+    saveBool('autoReply', _autoReplyNotifier);
+    saveString('autoReplyMessage', _autoReplyMessageNotifier);
+    saveBool('messageForwarding', _messageForwardingNotifier);
+    saveBool('chatSearch', _chatSearchNotifier);
+    saveBool('smartNotifications', _smartNotificationsNotifier);
+    saveBool('messageScheduling', _messageSchedulingNotifier);
+    saveBool('pinnedChats', _pinnedChatsNotifier);
+    saveBool('readReceiptControl', _readReceiptControlNotifier);
+    saveBool('presenceIndicator', _presenceIndicatorNotifier);
+    saveBool('broadcastList', _broadcastListNotifier);
+    saveBool('groupManagement', _groupManagementNotifier);
+    saveBool('customNotificationSound', _customNotificationSoundNotifier);
+    saveBool('gestureShortcuts', _gestureShortcutsNotifier);
+    saveBool('chatBubbleCustomization', _chatBubbleCustomizationNotifier);
+    saveString('selectedChatBubbleStyle', _selectedChatBubbleStyleNotifier);
+    saveBool('quickReply', _quickReplyNotifier);
+    saveBool('typingStatus', _typingStatusNotifier);
+    saveBool('deviceSync', _deviceSyncNotifier);
+    saveBool('blockUnknownContacts', _blockUnknownContactsNotifier);
+    saveBool('groupManagementAdvanced', _groupManagementAdvancedNotifier);
+    saveBool('contactSync', _contactSyncNotifier);
+    saveBool('messageReactions', _messageReactionsNotifier);
+    saveBool('messageEditing', _messageEditingNotifier);
+    saveBool('messageDeleteAfter', _messageDeleteAfterNotifier);
+    saveBool('voiceMessage', _voiceMessageNotifier);
+    saveBool('videoMessage', _videoMessageNotifier);
+    saveBool('customWallpaper', _customWallpaperNotifier);
+    saveString('language', _languageNotifier);
+    saveString('region', _regionNotifier);
+  }
+
+  static void _loadFromPreferences() {
+    _settingsLoading = true;
+
+    _sendWithEnterNotifier.value = EnterpriseSession._prefs.getBool('sendWithEnter') ?? true;
+    _readReceiptsNotifier.value = EnterpriseSession._prefs.getBool('readReceipts') ?? true;
+    _typingIndicatorsNotifier.value = EnterpriseSession._prefs.getBool('typingIndicators') ?? true;
+    _autoDownloadMediaNotifier.value = EnterpriseSession._prefs.getBool('autoDownloadMedia') ?? true;
+    _incognitoKeyboardNotifier.value = EnterpriseSession._prefs.getBool('incognitoKeyboard') ?? false;
+    _reduceMotionNotifier.value = EnterpriseSession._prefs.getBool('reduceMotion') ?? false;
+    _dataSaverNotifier.value = EnterpriseSession._prefs.getBool('dataSaver') ?? false;
+    _chatFontSizeNotifier.value = EnterpriseSession._prefs.getDouble('chatFontSize') ?? 14.0;
+    _endToEndEncryptionNotifier.value = EnterpriseSession._prefs.getBool('endToEndEncryption') ?? true;
+    _messageBackupNotifier.value = EnterpriseSession._prefs.getBool('messageBackup') ?? true;
+    _blockUnknownNotifier.value = EnterpriseSession._prefs.getBool('blockUnknown') ?? false;
+    _showOnlineStatusNotifier.value = EnterpriseSession._prefs.getBool('showOnlineStatus') ?? true;
+    _allowScreenshotsNotifier.value = EnterpriseSession._prefs.getBool('allowScreenshots') ?? true;
+    _lowBatteryModeNotifier.value = EnterpriseSession._prefs.getBool('lowBatteryMode') ?? false;
+    _compressMediaNotifier.value = EnterpriseSession._prefs.getBool('compressMedia') ?? false;
+    _autoplayVideosNotifier.value = EnterpriseSession._prefs.getBool('autoplayVideos') ?? true;
+    _groupNotificationsNotifier.value = EnterpriseSession._prefs.getBool('groupNotifications') ?? true;
+    _linkPreviewNotifier.value = EnterpriseSession._prefs.getBool('linkPreview') ?? true;
+    _autoBackupSettingsNotifier.value = EnterpriseSession._prefs.getBool('autoBackupSettings') ?? true;
+    _vpnEnabledNotifier.value = EnterpriseSession._prefs.getBool('vpnEnabled') ?? false;
+    _analyticsEnabledNotifier.value = EnterpriseSession._prefs.getBool('analyticsEnabled') ?? true;
+    _proxyTypeNotifier.value = EnterpriseSession._prefs.getString('proxyType') ?? 'Direct';
+    _proxyHostNotifier.value = EnterpriseSession._prefs.getString('proxyHost') ?? '';
+    _proxyPortNotifier.value = EnterpriseSession._prefs.getString('proxyPort') ?? '';
+    _dndEnabledNotifier.value = EnterpriseSession._prefs.getBool('dndEnabled') ?? false;
+    _dndStartTimeNotifier.value = EnterpriseSession._prefs.getString('dndStartTime') ?? '10:00 PM';
+    _dndEndTimeNotifier.value = EnterpriseSession._prefs.getString('dndEndTime') ?? '7:00 AM';
+    _dndAllowEmergencyNotifier.value = EnterpriseSession._prefs.getBool('dndAllowEmergency') ?? true;
+    _currentStatusNotifier.value = EnterpriseSession._prefs.getString('currentStatus') ?? 'Online';
+    _statusMessageNotifier.value = EnterpriseSession._prefs.getString('statusMessage') ?? '';
+    _archiveChatNotifier.value = EnterpriseSession._prefs.getBool('archiveChat') ?? false;
+    _pinChatNotifier.value = EnterpriseSession._prefs.getBool('pinChat') ?? false;
+    _muteChatNotifier.value = EnterpriseSession._prefs.getBool('muteChat') ?? false;
+    _enableDraftsNotifier.value = EnterpriseSession._prefs.getBool('enableDrafts') ?? true;
+    _autoReplyNotifier.value = EnterpriseSession._prefs.getBool('autoReply') ?? false;
+    _autoReplyMessageNotifier.value = EnterpriseSession._prefs.getString('autoReplyMessage') ?? 'I\'m currently away.';
+    _messageForwardingNotifier.value = EnterpriseSession._prefs.getBool('messageForwarding') ?? true;
+    _chatSearchNotifier.value = EnterpriseSession._prefs.getBool('chatSearch') ?? true;
+    _smartNotificationsNotifier.value = EnterpriseSession._prefs.getBool('smartNotifications') ?? true;
+    _messageSchedulingNotifier.value = EnterpriseSession._prefs.getBool('messageScheduling') ?? false;
+    _pinnedChatsNotifier.value = EnterpriseSession._prefs.getBool('pinnedChats') ?? true;
+    _readReceiptControlNotifier.value = EnterpriseSession._prefs.getBool('readReceiptControl') ?? true;
+    _presenceIndicatorNotifier.value = EnterpriseSession._prefs.getBool('presenceIndicator') ?? true;
+    _broadcastListNotifier.value = EnterpriseSession._prefs.getBool('broadcastList') ?? true;
+    _groupManagementNotifier.value = EnterpriseSession._prefs.getBool('groupManagement') ?? true;
+    _customNotificationSoundNotifier.value = EnterpriseSession._prefs.getBool('customNotificationSound') ?? true;
+    _gestureShortcutsNotifier.value = EnterpriseSession._prefs.getBool('gestureShortcuts') ?? true;
+    _chatBubbleCustomizationNotifier.value = EnterpriseSession._prefs.getBool('chatBubbleCustomization') ?? false;
+    _selectedChatBubbleStyleNotifier.value = EnterpriseSession._prefs.getString('selectedChatBubbleStyle') ?? 'Default';
+    _quickReplyNotifier.value = EnterpriseSession._prefs.getBool('quickReply') ?? true;
+    _typingStatusNotifier.value = EnterpriseSession._prefs.getBool('typingStatus') ?? true;
+    _deviceSyncNotifier.value = EnterpriseSession._prefs.getBool('deviceSync') ?? true;
+    _blockUnknownContactsNotifier.value = EnterpriseSession._prefs.getBool('blockUnknownContacts') ?? false;
+    _groupManagementAdvancedNotifier.value = EnterpriseSession._prefs.getBool('groupManagementAdvanced') ?? true;
+    _contactSyncNotifier.value = EnterpriseSession._prefs.getBool('contactSync') ?? true;
+    _messageReactionsNotifier.value = EnterpriseSession._prefs.getBool('messageReactions') ?? true;
+    _messageEditingNotifier.value = EnterpriseSession._prefs.getBool('messageEditing') ?? true;
+    _messageDeleteAfterNotifier.value = EnterpriseSession._prefs.getBool('messageDeleteAfter') ?? false;
+    _voiceMessageNotifier.value = EnterpriseSession._prefs.getBool('voiceMessage') ?? true;
+    _videoMessageNotifier.value = EnterpriseSession._prefs.getBool('videoMessage') ?? true;
+    _customWallpaperNotifier.value = EnterpriseSession._prefs.getBool('customWallpaper') ?? false;
+    _languageNotifier.value = EnterpriseSession._prefs.getString('language') ?? 'English (US)';
+    _regionNotifier.value = EnterpriseSession._prefs.getString('region') ?? 'United States';
+
+    _settingsLoading = false;
+  }
+
+  static TimeOfDay? _parseTimeOfDay(String value) {
+    final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)\$', caseSensitive: false)
+        .firstMatch(value.trim());
+    if (match == null) return null;
+    final hour = int.tryParse(match.group(1)!) ?? 0;
+    final minute = int.tryParse(match.group(2)!) ?? 0;
+    final period = match.group(3)!.toUpperCase();
+    final normalizedHour = hour == 12 ? 0 : hour;
+    return TimeOfDay(
+      hour: normalizedHour + (period == 'PM' ? 12 : 0),
+      minute: minute,
+    );
+  }
+
+  static bool _isBefore(TimeOfDay a, TimeOfDay b) {
+    return a.hour < b.hour || (a.hour == b.hour && a.minute < b.minute);
+  }
+
+  static bool _isDndActive() {
+    if (!_dndEnabledNotifier.value) return false;
+    final start = _parseTimeOfDay(_dndStartTimeNotifier.value);
+    final end = _parseTimeOfDay(_dndEndTimeNotifier.value);
+    if (start == null || end == null) return false;
+    final now = TimeOfDay.fromDateTime(DateTime.now());
+    if (start.hour < end.hour || (start.hour == end.hour && start.minute < end.minute)) {
+      return !_isBefore(now, start) && _isBefore(now, end);
+    }
+    return !_isBefore(now, start) || _isBefore(now, end);
+  }
+
+  static Future<void> _saveAllToPreferences() async {
+    await EnterpriseSession._prefs.setBool('sendWithEnter', _sendWithEnterNotifier.value);
+    await EnterpriseSession._prefs.setBool('readReceipts', _readReceiptsNotifier.value);
+    await EnterpriseSession._prefs.setBool('typingIndicators', _typingIndicatorsNotifier.value);
+    await EnterpriseSession._prefs.setBool('autoDownloadMedia', _autoDownloadMediaNotifier.value);
+    await EnterpriseSession._prefs.setBool('incognitoKeyboard', _incognitoKeyboardNotifier.value);
+    await EnterpriseSession._prefs.setBool('reduceMotion', _reduceMotionNotifier.value);
+    await EnterpriseSession._prefs.setBool('dataSaver', _dataSaverNotifier.value);
+    await EnterpriseSession._prefs.setDouble('chatFontSize', _chatFontSizeNotifier.value);
+    await EnterpriseSession._prefs.setBool('endToEndEncryption', _endToEndEncryptionNotifier.value);
+    await EnterpriseSession._prefs.setBool('messageBackup', _messageBackupNotifier.value);
+    await EnterpriseSession._prefs.setBool('blockUnknown', _blockUnknownNotifier.value);
+    await EnterpriseSession._prefs.setBool('showOnlineStatus', _showOnlineStatusNotifier.value);
+    await EnterpriseSession._prefs.setBool('allowScreenshots', _allowScreenshotsNotifier.value);
+    await EnterpriseSession._prefs.setBool('lowBatteryMode', _lowBatteryModeNotifier.value);
+    await EnterpriseSession._prefs.setBool('compressMedia', _compressMediaNotifier.value);
+    await EnterpriseSession._prefs.setBool('autoplayVideos', _autoplayVideosNotifier.value);
+    await EnterpriseSession._prefs.setBool('groupNotifications', _groupNotificationsNotifier.value);
+    await EnterpriseSession._prefs.setBool('linkPreview', _linkPreviewNotifier.value);
+    await EnterpriseSession._prefs.setBool('autoBackupSettings', _autoBackupSettingsNotifier.value);
+    await EnterpriseSession._prefs.setBool('vpnEnabled', _vpnEnabledNotifier.value);
+    await EnterpriseSession._prefs.setBool('analyticsEnabled', _analyticsEnabledNotifier.value);
+    await EnterpriseSession._prefs.setString('proxyType', _proxyTypeNotifier.value);
+    await EnterpriseSession._prefs.setString('proxyHost', _proxyHostNotifier.value);
+    await EnterpriseSession._prefs.setString('proxyPort', _proxyPortNotifier.value);
+    await EnterpriseSession._prefs.setBool('dndEnabled', _dndEnabledNotifier.value);
+    await EnterpriseSession._prefs.setString('dndStartTime', _dndStartTimeNotifier.value);
+    await EnterpriseSession._prefs.setString('dndEndTime', _dndEndTimeNotifier.value);
+    await EnterpriseSession._prefs.setBool('dndAllowEmergency', _dndAllowEmergencyNotifier.value);
+    await EnterpriseSession._prefs.setString('currentStatus', _currentStatusNotifier.value);
+    await EnterpriseSession._prefs.setString('statusMessage', _statusMessageNotifier.value);
+    await EnterpriseSession._prefs.setBool('archiveChat', _archiveChatNotifier.value);
+    await EnterpriseSession._prefs.setBool('pinChat', _pinChatNotifier.value);
+    await EnterpriseSession._prefs.setBool('muteChat', _muteChatNotifier.value);
+    await EnterpriseSession._prefs.setBool('enableDrafts', _enableDraftsNotifier.value);
+    await EnterpriseSession._prefs.setBool('autoReply', _autoReplyNotifier.value);
+    await EnterpriseSession._prefs.setString('autoReplyMessage', _autoReplyMessageNotifier.value);
+    await EnterpriseSession._prefs.setBool('messageForwarding', _messageForwardingNotifier.value);
+    await EnterpriseSession._prefs.setBool('chatSearch', _chatSearchNotifier.value);
+    await EnterpriseSession._prefs.setBool('smartNotifications', _smartNotificationsNotifier.value);
+    await EnterpriseSession._prefs.setBool('messageScheduling', _messageSchedulingNotifier.value);
+    await EnterpriseSession._prefs.setBool('pinnedChats', _pinnedChatsNotifier.value);
+    await EnterpriseSession._prefs.setBool('readReceiptControl', _readReceiptControlNotifier.value);
+    await EnterpriseSession._prefs.setBool('presenceIndicator', _presenceIndicatorNotifier.value);
+    await EnterpriseSession._prefs.setBool('broadcastList', _broadcastListNotifier.value);
+    await EnterpriseSession._prefs.setBool('groupManagement', _groupManagementNotifier.value);
+    await EnterpriseSession._prefs.setBool('customNotificationSound', _customNotificationSoundNotifier.value);
+    await EnterpriseSession._prefs.setBool('gestureShortcuts', _gestureShortcutsNotifier.value);
+    await EnterpriseSession._prefs.setBool('chatBubbleCustomization', _chatBubbleCustomizationNotifier.value);
+    await EnterpriseSession._prefs.setString('selectedChatBubbleStyle', _selectedChatBubbleStyleNotifier.value);
+    await EnterpriseSession._prefs.setBool('quickReply', _quickReplyNotifier.value);
+    await EnterpriseSession._prefs.setBool('typingStatus', _typingStatusNotifier.value);
+    await EnterpriseSession._prefs.setBool('deviceSync', _deviceSyncNotifier.value);
+    await EnterpriseSession._prefs.setBool('blockUnknownContacts', _blockUnknownContactsNotifier.value);
+    await EnterpriseSession._prefs.setBool('groupManagementAdvanced', _groupManagementAdvancedNotifier.value);
+    await EnterpriseSession._prefs.setBool('contactSync', _contactSyncNotifier.value);
+    await EnterpriseSession._prefs.setBool('messageReactions', _messageReactionsNotifier.value);
+    await EnterpriseSession._prefs.setBool('messageEditing', _messageEditingNotifier.value);
+    await EnterpriseSession._prefs.setBool('messageDeleteAfter', _messageDeleteAfterNotifier.value);
+    await EnterpriseSession._prefs.setBool('voiceMessage', _voiceMessageNotifier.value);
+    await EnterpriseSession._prefs.setBool('videoMessage', _videoMessageNotifier.value);
+    await EnterpriseSession._prefs.setBool('customWallpaper', _customWallpaperNotifier.value);
+    await EnterpriseSession._prefs.setString('language', _languageNotifier.value);
+    await EnterpriseSession._prefs.setString('region', _regionNotifier.value);
+  }
+
+  static String exportSettingsToJson() {
+    final settings = {
+      'theme': EnterpriseSession.currentThemeVariant,
+      'themeSeed': EnterpriseSession.themeSeed.toARGB32(),
+      'notifications': EnterpriseSession.notificationsEnabled,
+      'language': _languageNotifier.value,
+      'region': _regionNotifier.value,
+      'sendWithEnter': _sendWithEnterNotifier.value,
+      'readReceipts': _readReceiptsNotifier.value,
+      'typingIndicators': _typingIndicatorsNotifier.value,
+      'autoDownloadMedia': _autoDownloadMediaNotifier.value,
+      'dataSaver': _dataSaverNotifier.value,
+      'chatFontSize': _chatFontSizeNotifier.value,
+      'vpnEnabled': _vpnEnabledNotifier.value,
+      'proxyType': _proxyTypeNotifier.value,
+      'proxyHost': _proxyHostNotifier.value,
+      'proxyPort': _proxyPortNotifier.value,
+      'dndEnabled': _dndEnabledNotifier.value,
+      'dndStartTime': _dndStartTimeNotifier.value,
+      'dndEndTime': _dndEndTimeNotifier.value,
+      'currentStatus': _currentStatusNotifier.value,
+      'statusMessage': _statusMessageNotifier.value,
+      'autoReply': _autoReplyNotifier.value,
+      'autoReplyMessage': _autoReplyMessageNotifier.value,
+      'quickReply': _quickReplyNotifier.value,
+      'customNotificationSound': _customNotificationSoundNotifier.value,
+      'analyticsEnabled': _analyticsEnabledNotifier.value,
+      'backupSettings': _autoBackupSettingsNotifier.value,
+      'timestamp': DateTime.now().toIso8601String(),
+      'version': _currentVersion,
+    };
+    return jsonEncode(settings);
+  }
+
+  static Future<bool> importSettingsFromJson(String jsonString) async {
+    try {
+      final Map<String, dynamic> data = jsonDecode(jsonString) as Map<String, dynamic>;
+      _settingsLoading = true;
+
+      if (data.containsKey('theme')) {
+        await EnterpriseSession.setThemeVariant(data['theme']?.toString() ?? 'light');
+      }
+      if (data.containsKey('themeSeed')) {
+        final seedInt = int.tryParse(data['themeSeed']?.toString() ?? '');
+        if (seedInt != null) {
+          await EnterpriseSession.setThemeSeedColor(Color(seedInt));
+        }
+      }
+      if (data.containsKey('notifications')) {
+        await EnterpriseSession.setNotificationsEnabled(data['notifications'] == true);
+      }
+
+      _languageNotifier.value = data['language']?.toString() ?? _languageNotifier.value;
+      _regionNotifier.value = data['region']?.toString() ?? _regionNotifier.value;
+      _sendWithEnterNotifier.value = data['sendWithEnter'] == true;
+      _readReceiptsNotifier.value = data['readReceipts'] == true;
+      _typingIndicatorsNotifier.value = data['typingIndicators'] == true;
+      _autoDownloadMediaNotifier.value = data['autoDownloadMedia'] == true;
+      _dataSaverNotifier.value = data['dataSaver'] == true;
+      _chatFontSizeNotifier.value = (data['chatFontSize'] is num ? (data['chatFontSize'] as num).toDouble() : _chatFontSizeNotifier.value);
+      _vpnEnabledNotifier.value = data['vpnEnabled'] == true;
+      _proxyTypeNotifier.value = data['proxyType']?.toString() ?? _proxyTypeNotifier.value;
+      _proxyHostNotifier.value = data['proxyHost']?.toString() ?? _proxyHostNotifier.value;
+      _proxyPortNotifier.value = data['proxyPort']?.toString() ?? _proxyPortNotifier.value;
+      _dndEnabledNotifier.value = data['dndEnabled'] == true;
+      _dndStartTimeNotifier.value = data['dndStartTime']?.toString() ?? _dndStartTimeNotifier.value;
+      _dndEndTimeNotifier.value = data['dndEndTime']?.toString() ?? _dndEndTimeNotifier.value;
+      _currentStatusNotifier.value = data['currentStatus']?.toString() ?? _currentStatusNotifier.value;
+      _statusMessageNotifier.value = data['statusMessage']?.toString() ?? _statusMessageNotifier.value;
+      _autoReplyNotifier.value = data['autoReply'] == true;
+      _autoReplyMessageNotifier.value = data['autoReplyMessage']?.toString() ?? _autoReplyMessageNotifier.value;
+      _quickReplyNotifier.value = data['quickReply'] == true;
+      _customNotificationSoundNotifier.value = data['customNotificationSound'] == true;
+      _analyticsEnabledNotifier.value = data['analyticsEnabled'] == true;
+      _autoBackupSettingsNotifier.value = data['backupSettings'] == true;
+
+      _settingsLoading = false;
+      await _saveAllToPreferences();
+      return true;
+    } catch (_) {
+      _settingsLoading = false;
+      return false;
+    }
+  }
+
+  static Future<void> clearAllSettings() async {
+    _settingsLoading = true;
+    await EnterpriseSession._prefs.clear();
+    EnterpriseSession.userId = '';
+    EnterpriseSession.username = '';
+    EnterpriseSession.avatarUrl = '';
+    EnterpriseSession.notificationsEnabled = true;
+    EnterpriseSession.notificationsEnabledNotifier.value = true;
+    await EnterpriseSession.setThemeSeedColor(const Color.fromARGB(255, 46, 154, 124));
+    await EnterpriseSession.setThemeVariant('light');
+
+    _sendWithEnterNotifier.value = true;
+    _readReceiptsNotifier.value = true;
+    _typingIndicatorsNotifier.value = true;
+    _autoDownloadMediaNotifier.value = true;
+    _incognitoKeyboardNotifier.value = false;
+    _reduceMotionNotifier.value = false;
+    _dataSaverNotifier.value = false;
+    _chatFontSizeNotifier.value = 14.0;
+    _endToEndEncryptionNotifier.value = true;
+    _messageBackupNotifier.value = true;
+    _blockUnknownNotifier.value = false;
+    _showOnlineStatusNotifier.value = true;
+    _allowScreenshotsNotifier.value = true;
+    _lowBatteryModeNotifier.value = false;
+    _compressMediaNotifier.value = false;
+    _autoplayVideosNotifier.value = true;
+    _groupNotificationsNotifier.value = true;
+    _linkPreviewNotifier.value = true;
+    _autoBackupSettingsNotifier.value = true;
+    _vpnEnabledNotifier.value = false;
+    _analyticsEnabledNotifier.value = true;
+    _proxyTypeNotifier.value = 'Direct';
+    _proxyHostNotifier.value = '';
+    _proxyPortNotifier.value = '';
+    _dndEnabledNotifier.value = false;
+    _dndStartTimeNotifier.value = '10:00 PM';
+    _dndEndTimeNotifier.value = '7:00 AM';
+    _dndAllowEmergencyNotifier.value = true;
+    _currentStatusNotifier.value = 'Online';
+    _statusMessageNotifier.value = '';
+    _archiveChatNotifier.value = false;
+    _pinChatNotifier.value = false;
+    _muteChatNotifier.value = false;
+    _enableDraftsNotifier.value = true;
+    _autoReplyNotifier.value = false;
+    _autoReplyMessageNotifier.value = 'I\'m currently away.';
+    _messageForwardingNotifier.value = true;
+    _chatSearchNotifier.value = true;
+    _smartNotificationsNotifier.value = true;
+    _messageSchedulingNotifier.value = false;
+    _pinnedChatsNotifier.value = true;
+    _readReceiptControlNotifier.value = true;
+    _presenceIndicatorNotifier.value = true;
+    _broadcastListNotifier.value = true;
+    _groupManagementNotifier.value = true;
+    _customNotificationSoundNotifier.value = true;
+    _gestureShortcutsNotifier.value = true;
+    _chatBubbleCustomizationNotifier.value = false;
+    _selectedChatBubbleStyleNotifier.value = 'Default';
+    _quickReplyNotifier.value = true;
+    _typingStatusNotifier.value = true;
+    _deviceSyncNotifier.value = true;
+    _blockUnknownContactsNotifier.value = false;
+    _groupManagementAdvancedNotifier.value = true;
+    _contactSyncNotifier.value = true;
+    _messageReactionsNotifier.value = true;
+    _messageEditingNotifier.value = true;
+    _messageDeleteAfterNotifier.value = false;
+    _voiceMessageNotifier.value = true;
+    _videoMessageNotifier.value = true;
+    _customWallpaperNotifier.value = false;
+    _languageNotifier.value = 'English (US)';
+    _regionNotifier.value = 'United States';
+
+    _settingsLoading = false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -352,9 +836,6 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          // ==========================================
-          // 1. APPEARANCE & THEME
-          // ==========================================
           _buildSectionHeader(context, 'Appearance'),
           Text('Theme Color', style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 8),
@@ -383,44 +864,26 @@ class SettingsScreen extends StatelessWidget {
               );
             }).toList(),
           ),
-          const SizedBox(height: 16),
-          Text('Theme Style', style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           ValueListenableBuilder<String>(
             valueListenable: EnterpriseSession.themeVariantNotifier,
-            builder: (context, current, _) {
-              return Wrap(
-                spacing: 8,
-                children: [
-                  ChoiceChip(label: const Text('Light'), selected: current == 'light', onSelected: (_) => EnterpriseSession.setThemeVariant('light')),
-                  ChoiceChip(label: const Text('Dark'), selected: current == 'dark', onSelected: (_) => EnterpriseSession.setThemeVariant('dark')),
-                  ChoiceChip(label: const Text('Amoled'), selected: current == 'amoled', onSelected: (_) => EnterpriseSession.setThemeVariant('amoled')),
-                ],
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.refresh),
-            title: const Text('Reset Appearance'),
-            subtitle: const Text('Return to default theme settings'),
-            onTap: () async {
-              await EnterpriseSession.setThemeSeedColor(const Color.fromARGB(255, 46, 154, 124));
-              await EnterpriseSession.setThemeVariant('light');
-              if (context.mounted) _showToast(context, 'Appearance reset to defaults.');
-            },
+            builder: (context, current, _) => Wrap(
+              spacing: 8,
+              children: [
+                ChoiceChip(label: const Text('Light'), selected: current == 'light', onSelected: (_) => EnterpriseSession.setThemeVariant('light')),
+                ChoiceChip(label: const Text('Dark'), selected: current == 'dark', onSelected: (_) => EnterpriseSession.setThemeVariant('dark')),
+                ChoiceChip(label: const Text('Amoled'), selected: current == 'amoled', onSelected: (_) => EnterpriseSession.setThemeVariant('amoled')),
+              ],
+            ),
           ),
           const Divider(),
 
-          // ==========================================
-          // 2. CHAT PREFERENCES (New)
-          // ==========================================
           _buildSectionHeader(context, 'Chat Preferences'),
           ValueListenableBuilder<bool>(
             valueListenable: _sendWithEnterNotifier,
             builder: (context, enabled, _) => SwitchListTile(
               value: enabled,
               title: const Text('Send with Enter'),
-              subtitle: const Text('Pressing the Enter key will send your message'),
               secondary: const Icon(Icons.keyboard_return),
               onChanged: (v) => _sendWithEnterNotifier.value = v,
             ),
@@ -435,1158 +898,85 @@ class SettingsScreen extends StatelessWidget {
                   title: const Text('Message Font Size'),
                   subtitle: Text('Current size: ${size.toInt()}pt'),
                 ),
-                Slider(
-                  value: size,
-                  min: 10.0,
-                  max: 24.0,
-                  divisions: 14,
-                  label: size.round().toString(),
-                  onChanged: (v) => _chatFontSizeNotifier.value = v,
-                ),
+                Slider(value: size, min: 10.0, max: 24.0, divisions: 14, label: size.round().toString(), onChanged: (v) => _chatFontSizeNotifier.value = v),
               ],
             ),
           ),
           const Divider(),
 
-          // ==========================================
-          // 3. PRIVACY & SECURITY (New)
-          // ==========================================
-          _buildSectionHeader(context, 'Privacy & Security'),
-          ValueListenableBuilder<bool>(
-            valueListenable: _readReceiptsNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Read Receipts'),
-              subtitle: const Text('Let others know when you have read their messages'),
-              secondary: const Icon(Icons.done_all),
-              onChanged: (v) => _readReceiptsNotifier.value = v,
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _typingIndicatorsNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Typing Indicators'),
-              subtitle: const Text('Show others when you are typing'),
-              secondary: const Icon(Icons.more_horiz),
-              onChanged: (v) => _typingIndicatorsNotifier.value = v,
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _incognitoKeyboardNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Incognito Keyboard'),
-              subtitle: const Text('Request OS to disable keyboard learning'),
-              secondary: const Icon(Icons.security),
-              onChanged: (v) {
-                _incognitoKeyboardNotifier.value = v;
-                _showToast(context, 'Keyboard mode updated');
-              },
-            ),
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 4. MEDIA & DATA (New)
-          // ==========================================
-          _buildSectionHeader(context, 'Media & Storage'),
-          ValueListenableBuilder<bool>(
-            valueListenable: _autoDownloadMediaNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Auto-Download Media'),
-              subtitle: const Text('Automatically download photos and videos'),
-              secondary: const Icon(Icons.download),
-              onChanged: (v) => _autoDownloadMediaNotifier.value = v,
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _dataSaverNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Data Saver Mode'),
-              subtitle: const Text('Compress images and reduce network usage'),
-              secondary: const Icon(Icons.data_usage),
-              onChanged: (v) => _dataSaverNotifier.value = v,
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.cleaning_services),
-            title: const Text('Clear Image Cache'),
-            subtitle: const Text('Free memory used by loaded images'),
-            onTap: () {
-              PaintingBinding.instance.imageCache.clear();
-              PaintingBinding.instance.imageCache.clearLiveImages();
-              _showToast(context, 'Local image cache cleared');
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 5. NOTIFICATIONS & ALERTS
-          // ==========================================
           _buildSectionHeader(context, 'Notifications'),
           ValueListenableBuilder<bool>(
             valueListenable: EnterpriseSession.notificationsEnabledNotifier,
-            builder: (context, enabled, _) {
-              return SwitchListTile(
-                value: enabled,
-                title: const Text('Push Notifications'),
-                subtitle: const Text('Receive push alerts for messages'),
-                secondary: const Icon(Icons.notifications),
-                onChanged: (v) async {
-                  await EnterpriseSession.setNotificationsEnabled(v);
-                  if (!kIsWeb) {
-                    try {
-                      if (v) {
-                        // Assuming FirebaseMessaging is defined in your original file
-                        // await FirebaseMessaging.instance.requestPermission(alert: true, badge: true, sound: true);
-                        // await FirebaseMessaging.instance.subscribeToTopic('group_chat');
-                      } else {
-                        // await FirebaseMessaging.instance.unsubscribeFromTopic('group_chat');
-                      }
-                    } catch (_) {}
-                  }
-                  if (context.mounted) _showToast(context, v ? 'Notifications enabled' : 'Notifications disabled');
-                },
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.notifications_active),
-            title: const Text('Test Notification'),
-            subtitle: const Text('Trigger a local system notification'),
-            onTap: () async {
-              if (!EnterpriseSession.notificationsEnabled) {
-                if (context.mounted) _showToast(context, 'Enable notifications first');
-                return;
-              }
-              _showToast(context, 'Test notification triggered');
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 6. ACCESSIBILITY (New)
-          // ==========================================
-          _buildSectionHeader(context, 'Accessibility'),
-          ValueListenableBuilder<bool>(
-            valueListenable: _reduceMotionNotifier,
             builder: (context, enabled, _) => SwitchListTile(
               value: enabled,
-              title: const Text('Reduce Motion'),
-              subtitle: const Text('Minimize UI animations and transitions'),
-              secondary: const Icon(Icons.animation),
-              onChanged: (v) => _reduceMotionNotifier.value = v,
+              title: const Text('Push Notifications'),
+              secondary: const Icon(Icons.notifications),
+              onChanged: (v) async => await EnterpriseSession.setNotificationsEnabled(v),
             ),
           ),
-          ListTile(
-            leading: const Icon(Icons.text_fields),
-            title: const Text('System Text Scaling'),
-            subtitle: const Text('View OS-level font size settings'),
-            onTap: () {
-              final scale = MediaQuery.textScalerOf(context).scale(14);
-              _showInfoDialog(context, 'Text Scaling', 'Your device is scaling a standard 14pt font to: ${scale.toStringAsFixed(1)}pt based on system accessibility settings.');
-            },
-          ),
           const Divider(),
 
-          // ==========================================
-          // 7. HARDWARE & DIAGNOSTICS
-          // ==========================================
-          _buildSectionHeader(context, 'Device & Hardware'),
-          ListTile(
-            leading: const Icon(Icons.vibration),
-            title: const Text('Test Haptic Feedback'),
-            subtitle: const Text('Trigger device vibration'),
-            onTap: () {
-              HapticFeedback.vibrate();
-              _showToast(context, 'Vibration triggered');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.keyboard_hide),
-            title: const Text('Dismiss Keyboard'),
-            subtitle: const Text('Force the onscreen keyboard to close'),
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              _showToast(context, 'Keyboard focus cleared');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.network_ping),
-            title: const Text('Simulate Network Ping'),
-            subtitle: const Text('Test UI responsiveness delay'),
-            onTap: () async {
-              _showToast(context, 'Pinging server...');
-              final stopwatch = Stopwatch()..start();
-              await Future.delayed(const Duration(milliseconds: 600)); 
-              stopwatch.stop();
-              if (context.mounted) _showToast(context, 'Pong! Latency: ${stopwatch.elapsedMilliseconds}ms');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.aspect_ratio),
-            title: const Text('Display Metrics'),
-            subtitle: const Text('View current screen resolution'),
-            onTap: () {
-              final size = MediaQuery.sizeOf(context);
-              final ratio = MediaQuery.devicePixelRatioOf(context);
-              _showInfoDialog(context, 'Screen Resolution', 'Width: ${size.width.toStringAsFixed(1)}\nHeight: ${size.height.toStringAsFixed(1)}\nPixel Ratio: $ratio');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.access_time),
-            title: const Text('Timezone & Format'),
-            subtitle: const Text('View local time data'),
-            onTap: () {
-              final now = DateTime.now();
-              final is24 = MediaQuery.alwaysUse24HourFormatOf(context);
-              _showInfoDialog(context, 'Time Settings', 'Timezone: ${now.timeZoneName}\nOffset: ${now.timeZoneOffset}\n24-Hour Format: $is24\nCurrent Time: $now');
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 8. ACCOUNT & SHARING
-          // ==========================================
-          _buildSectionHeader(context, 'Account & Sharing'),
+          _buildSectionHeader(context, 'Account'),
           ListTile(
             leading: const Icon(Icons.person),
             title: const Text('My Profile'),
             subtitle: const Text('View and edit your profile'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showProfileDialog(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.copy),
-            title: const Text('Copy Profile ID'),
-            subtitle: Text('Copy ${EnterpriseSession.userId.isEmpty ? "your ID" : EnterpriseSession.userId.substring(0, min(12, EnterpriseSession.userId.length))}...'),
-            onTap: () {
-              if (EnterpriseSession.userId.isEmpty) {
-                _showToast(context, 'No user ID available. Please log in first.');
-                return;
-              }
-              Clipboard.setData(ClipboardData(text: EnterpriseSession.userId));
-              _showToast(context, 'User ID copied: ${EnterpriseSession.userId.substring(0, min(8, EnterpriseSession.userId.length))}...');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.share),
-            title: const Text('Generate Share Link'),
-            subtitle: const Text('Share account access via network'),
-            onTap: () async {
-              _showToast(context, 'Generating share link...');
-              try {
-                final shareUrl = await LocalShareServer.instance.startServer();
-                await Clipboard.setData(ClipboardData(text: shareUrl));
-                if (context.mounted) {
-                  _showToast(context, 'Share link ready: $shareUrl');
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  _showToast(context, 'Error generating share link: $e');
-                }
-              }
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.info),
-            title: const Text('Session Information'),
-            subtitle: const Text('View active session details'),
-            onTap: () {
-              final sessionInfo = '''
-User: ${EnterpriseSession.username}
-ID: ${EnterpriseSession.userId}
-Platform: ${Theme.of(context).platform.name}
-Theme: ${EnterpriseSession.currentThemeVariant}
-Notifications: ${EnterpriseSession.notificationsEnabled ? 'Enabled' : 'Disabled'}
-App Version: 1.9
-Active since app launch
-              ''';
-              _showInfoDialog(context, 'Session Information', sessionInfo.trim());
-            },
+            onTap: () => _showProfileDialog(context),
           ),
           const Divider(),
 
-          // ==========================================
-          // 9. LOCALIZATION & LANGUAGE
-          // ==========================================
+          _buildSectionHeader(context, 'Content'),
+          ListTile(
+            leading: const Icon(Icons.photo_library),
+            title: const Text('Stories'),
+            subtitle: const Text('Share and view stories'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StoriesScreen())),
+          ),
+          const Divider(),
+
           _buildSectionHeader(context, 'Language & Region'),
           ListTile(
             leading: const Icon(Icons.language),
             title: const Text('Language'),
-            subtitle: const Text('English (US)'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showLanguageDialog(context);
-            },
+            subtitle: ValueListenableBuilder<String>(valueListenable: _languageNotifier, builder: (context, language, _) => Text(language)),
+            onTap: () => _showLanguageDialog(context),
           ),
           ListTile(
             leading: const Icon(Icons.location_on),
             title: const Text('Region'),
-            subtitle: const Text('United States'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showRegionDialog(context);
-            },
+            subtitle: ValueListenableBuilder<String>(valueListenable: _regionNotifier, builder: (context, region, _) => Text(region)),
+            onTap: () => _showRegionDialog(context),
           ),
           const Divider(),
 
-          // ==========================================
-          // 9B. SOUND & AUDIO
-          // ==========================================
-          _buildSectionHeader(context, 'Sound & Audio'),
           ListTile(
-            leading: const Icon(Icons.volume_up),
-            title: const Text('Message Notifications'),
-            subtitle: const Text('Sound enabled'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showInfoDialog(context, 'Message Notifications', 'Sound: Enabled ✓\nVibration: Enabled ✓\nVolume: 100%\nNotification Tone: Default\n\nYou will be notified for all incoming messages.');
-            },
+            leading: const Icon(Icons.info_outline),
+            title: const Text('About App'),
+            subtitle: const Text('Version & licenses'),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutScreen())),
           ),
-          ListTile(
-            leading: const Icon(Icons.volume_mute),
-            title: const Text('Mute All Sounds'),
-            subtitle: const Text('Disable notification audio'),
-            onTap: () {
-              HapticFeedback.vibrate();
-              _showToast(context, 'All notification sounds muted');
-            },
-          ),
-          const Divider(),
 
-          // ==========================================
-          // 9C. SCHEDULED & ADVANCED
-          // ==========================================
-          _buildSectionHeader(context, 'Scheduled & Advanced'),
-          ListTile(
-            leading: const Icon(Icons.schedule),
-            title: const Text('Dark Mode Schedule'),
-            subtitle: const Text('Auto-switch at 9PM - 7AM'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showDarkModeScheduleDialog(context);
-            },
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _autoBackupSettingsNotifier,
-            builder: (context, enabled, _) => ListTile(
-              leading: const Icon(Icons.cloud_download),
-              title: const Text('Backup Settings'),
-              subtitle: const Text('Auto-backup to cloud'),
-              trailing: Switch(
-                value: enabled,
-                onChanged: (v) {
-                  _autoBackupSettingsNotifier.value = v;
-                  _showToast(context, 'Auto-backup ${v ? "enabled" : "disabled"}');
-                },
-              ),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.download),
-            title: const Text('Export Settings'),
-            subtitle: const Text('Download your settings as JSON'),
-            onTap: () {
-              _exportSettings(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.upload),
-            title: const Text('Import Settings'),
-            subtitle: const Text('Restore settings from JSON file'),
-            onTap: () {
-              _showImportDialog(context);
-            },
-          ),
           const Divider(),
-
-          // ==========================================
-          // 9E. UPDATES & MAINTENANCE
-          // ==========================================
-          _buildSectionHeader(context, 'Updates & Maintenance'),
-          ValueListenableBuilder<bool>(
-            valueListenable: _checkingUpdateNotifier,
-            builder: (context, isChecking, _) {
-              return ValueListenableBuilder<String?>(
-                valueListenable: _latestVersionNotifier,
-                builder: (context, latestVersion, _) {
-                  return ListTile(
-                    leading: const Icon(Icons.system_update),
-                    title: const Text('Check for Updates'),
-                    subtitle: isChecking
-                        ? const Text('Checking latest release...')
-                        : latestVersion != null && _isNewerVersion(latestVersion, _currentVersion)
-                            ? Text('New version available: $latestVersion (Current: $_currentVersion)')
-                            : const Text('App version: 1.9'),
-                    trailing: isChecking ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)) : null,
-                    onTap: isChecking ? null : () => _checkAndDownloadUpdate(context),
-                  );
-                },
-              );
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9D. APP INFO & DEVELOPER TOOLS (New)
-          // ==========================================
-          _buildSectionHeader(context, 'App Info'),
-          ListTile(
-            leading: const Icon(Icons.help),
-            title: const Text('Chat Commands Guide'),
-            subtitle: const Text('View available typing commands'),
-            onTap: () {
-              _showInfoDialog(context, 'Chat Commands', 'Try typing these in chat:\n\n• /shrug ¯\\_(ツ)_/¯\n• /tableflip (╯°□°)╯︵ ┻━┻\n• /unflip ┬─┬ノ( º _ ºノ)\n• /me <action>\n• /roll [NdM]\n• /joke\n• /help');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.copyright),
-            title: const Text('Open Source Licenses'),
-            subtitle: const Text('View Software Licenses Used'),
-            onTap: () {
-              showLicensePage(
-                context: context,
-                applicationName: 'Reyaansh Chat',
-                applicationVersion: '1.9',
-              );
-            },
-          ),
-          ValueListenableBuilder<int>(
-            valueListenable: _developerTapCount,
-            builder: (context, count, _) {
-              return ListTile(
-                leading: const Icon(Icons.app_shortcut),
-                title: const Text('About App'),
-                subtitle: Text(count > 3 ? 'You are ${7 - count} taps away from being a developer.' : 'View official version and logo'),
-                onTap: () {
-                  if (count >= 6) {
-                    _developerTapCount.value = 0;
-                    _showDeveloperOptions(context);
-                  } else {
-                    _developerTapCount.value++;
-                    if (count == 0) {
-                      showAboutDialog(
-                        context: context,
-                        applicationName: 'Reyaansh Chat',
-                        applicationVersion: '1.9',
-                        applicationLegalese: 'This Is Open Source No Legal Claims.',
-                        applicationIcon: const Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child: Icon(Icons.chat_bubble, size: 48, color: Colors.orange),
-                        ),
-                      );
-                    }
-                  }
-                },
-              );
-            }
-          ),
-          
-          // REAL Developer tools that work without modifying other files
-          if (kDebugMode) ...[
-            const SizedBox(height: 16),
-            Text('Developer Tools (Debug Only)', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.deepPurple)),
-            ListTile(
-              leading: const Icon(Icons.bug_report),
-              title: const Text('Toggle Visual Debug Bounds'),
-              subtitle: const Text('Show rendering boxes and constraints'),
-              onTap: () {
-                debugPaintSizeEnabled = !debugPaintSizeEnabled;
-                // Force a rebuild of the entire tree to show bounds
-                (context as Element).markNeedsBuild();
-                _showToast(context, 'Visual debug bounds ${debugPaintSizeEnabled ? 'enabled' : 'disabled'}');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.warning, color: Colors.orange),
-              title: const Text('Simulate Exception'),
-              subtitle: const Text('Throw a silent Dart exception'),
-              onTap: () {
-                _showToast(context, 'Exception thrown in console');
-                throw Exception('Test Exception from SettingsScreen');
-              },
-            ),
-          ],
-          
-          const Divider(),
-
-          // ==========================================
-          // 9F. CONTENT & SHARING
-          // ==========================================
-          _buildSectionHeader(context, 'Content & Sharing'),
-          ListTile(
-            leading: const Icon(Icons.photo_library),
-            title: const Text('Stories'),
-            subtitle: const Text('Share and view stories (like Facebook)'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StoriesScreen()));
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.share_arrival_time),
-            title: const Text('Shared Media'),
-            subtitle: const Text('Manage shared photos and videos'),
-            onTap: () {
-              _showSharedMediaDialog(context);
-            },
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _linkPreviewNotifier,
-            builder: (context, enabled, _) => ListTile(
-              leading: const Icon(Icons.link),
-              title: const Text('Link Preview'),
-              subtitle: const Text('Show previews for shared links'),
-              trailing: Switch(
-                value: enabled,
-                onChanged: (v) {
-                  _linkPreviewNotifier.value = v;
-                  _showToast(context, 'Link previews ${v ? "enabled" : "disabled"}');
-                },
-              ),
-            ),
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9G. SECURITY & PRIVACY EXTENDED
-          // ==========================================
-          _buildSectionHeader(context, 'Security & Privacy (Advanced)'),
-          ValueListenableBuilder<bool>(
-            valueListenable: _endToEndEncryptionNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('End-to-End Encryption'),
-              subtitle: const Text('All messages are encrypted'),
-              secondary: const Icon(Icons.lock),
-              onChanged: (v) => _endToEndEncryptionNotifier.value = v,
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _blockUnknownNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Block Unknown Contacts'),
-              subtitle: const Text('Only accept messages from saved contacts'),
-              secondary: const Icon(Icons.block),
-              onChanged: (v) => _blockUnknownNotifier.value = v,
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _showOnlineStatusNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Show Online Status'),
-              subtitle: const Text('Let others see when you are active'),
-              secondary: const Icon(Icons.visibility),
-              onChanged: (v) => _showOnlineStatusNotifier.value = v,
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.block),
-            title: const Text('Blocked Users'),
-            subtitle: const Text('Manage your block list'),
-            onTap: () {
-              _showToast(context, 'Blocked users: 0');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.security),
-            title: const Text('Two-Factor Authentication'),
-            subtitle: const Text('Add extra security to your account'),
-            onTap: () {
-              _show2FADialog(context);
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9H. STORAGE & CACHE
-          // ==========================================
-          _buildSectionHeader(context, 'Storage & Cache'),
-          ListTile(
-            leading: const Icon(Icons.storage),
-            title: const Text('Storage Usage'),
-            subtitle: const Text('View app data storage breakdown'),
-            onTap: () {
-              _showInfoDialog(context, 'Storage Usage', 'Images: 245 MB\nVideos: 512 MB\nMessages: 45 MB\nCache: 128 MB\nTotal: 930 MB');
-            },
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _compressMediaNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Compress Media'),
-              subtitle: const Text('Automatically compress photos and videos'),
-              secondary: const Icon(Icons.compress),
-              onChanged: (v) => _compressMediaNotifier.value = v,
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.cached),
-            title: const Text('Clear Cache'),
-            subtitle: const Text('Free up temporary storage space'),
-            onTap: () {
-              _showConfirmDialog(context, 'Clear Cache', 'This will delete temporary files. Continue?', () {
-                _showToast(context, 'Cache cleared (234 MB freed)');
-              });
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.delete_outline),
-            title: const Text('Clear Downloaded Files'),
-            subtitle: const Text('Remove all downloaded media'),
-            onTap: () {
-              _showToast(context, 'Cleared 512 MB of downloads');
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9I. BATTERY & PERFORMANCE
-          // ==========================================
-          _buildSectionHeader(context, 'Battery & Performance'),
-          ValueListenableBuilder<bool>(
-            valueListenable: _lowBatteryModeNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Low Battery Mode'),
-              subtitle: const Text('Reduce performance to save battery'),
-              secondary: const Icon(Icons.battery_alert),
-              onChanged: (v) => _lowBatteryModeNotifier.value = v,
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _autoplayVideosNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Autoplay Videos'),
-              subtitle: const Text('Videos play automatically in chat'),
-              secondary: const Icon(Icons.videocam),
-              onChanged: (v) => _autoplayVideosNotifier.value = v,
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.speed),
-            title: const Text('Performance Mode'),
-            subtitle: const Text('Balanced (Recommended)'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showToast(context, 'Performance Mode: Balanced');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.memory),
-            title: const Text('RAM Usage'),
-            subtitle: const Text('~350 MB / 6 GB available'),
-            onTap: () {
-              _showToast(context, 'Current RAM: 350 MB\nAvailable: 6 GB');
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9J. DATA & SYNC
-          // ==========================================
-          _buildSectionHeader(context, 'Data & Synchronization'),
-          ValueListenableBuilder<bool>(
-            valueListenable: _messageBackupNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Backup Messages'),
-              subtitle: const Text('Auto-sync messages to cloud'),
-              secondary: const Icon(Icons.backup),
-              onChanged: (v) => _messageBackupNotifier.value = v,
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.cloud_sync),
-            title: const Text('Last Backup'),
-            subtitle: const Text('Today at 2:45 PM'),
-            onTap: () {
-              _showBackupActionDialog(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.restore),
-            title: const Text('Restore from Backup'),
-            subtitle: const Text('Restore messages from backup'),
-            onTap: () {
-              _showRestoreDialog(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.sync_problem),
-            title: const Text('Sync Status'),
-            subtitle: const Text('All data synced'),
-            onTap: () {
-              _showToast(context, 'Sync Status: Up to date ✓');
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9K. NETWORK & CONNECTION
-          // ==========================================
-          _buildSectionHeader(context, 'Network & Connection'),
-          ListTile(
-            leading: const Icon(Icons.cloud),
-            title: const Text('Server Status'),
-            subtitle: const Text('Connected (Optimal)'),
-            onTap: () {
-              _showInfoDialog(context, 'Server Status', 'Status: ✓ Connected\nLatency: 45ms\nServer: US-East-1\nConnection: Secure');
-            },
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _vpnEnabledNotifier,
-            builder: (context, enabled, _) => ListTile(
-              leading: const Icon(Icons.vpn_lock),
-              title: const Text('Use VPN'),
-              subtitle: const Text('Route through VPN for privacy'),
-              trailing: Switch(
-                value: enabled,
-                onChanged: (v) {
-                  _vpnEnabledNotifier.value = v;
-                  _showToast(context, 'VPN ${v ? "connected" : "disconnected"}');
-                },
-              ),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.public),
-            title: const Text('Proxy Settings'),
-            subtitle: const Text('Advanced proxy configuration'),
-            onTap: () {
-              _showProxyDialog(context);
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9L. LINKED DEVICES & SESSIONS
-          // ==========================================
-          _buildSectionHeader(context, 'Linked Devices'),
-          ListTile(
-            leading: const Icon(Icons.devices),
-            title: const Text('Active Sessions'),
-            subtitle: const Text('1 session (This device)'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showInfoDialog(context, 'Active Sessions', 'This Device\nChrome on Linux\nLast active: Now\n\nTap to end session');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text('Sign Out Other Devices'),
-            subtitle: const Text('End all other active sessions'),
-            onTap: () {
-              _showToast(context, 'All other sessions ended');
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9M. NOTIFICATIONS EXTENDED
-          // ==========================================
-          _buildSectionHeader(context, 'Notifications (Extended)'),
-          ValueListenableBuilder<bool>(
-            valueListenable: _groupNotificationsNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Group Notifications'),
-              subtitle: const Text('Combine multiple notifications'),
-              secondary: const Icon(Icons.groups),
-              onChanged: (v) => _groupNotificationsNotifier.value = v,
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.schedule),
-            title: const Text('Quiet Hours'),
-            subtitle: const Text('11:00 PM - 8:00 AM'),
-            onTap: () {
-              _showToast(context, 'Notifications muted during quiet hours');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.notification_important),
-            title: const Text('Critical Alerts'),
-            subtitle: const Text('High priority notifications only'),
-            onTap: () {
-              _showToast(context, 'Critical alerts: Enabled');
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9N. QUICK ACTIONS (Daily Use)
-          // ==========================================
-          _buildSectionHeader(context, 'Quick Actions'),
-          ListTile(
-            leading: const Icon(Icons.status_display),
-            title: const Text('Set Status'),
-            subtitle: ValueListenableBuilder<String>(
-              valueListenable: _currentStatusNotifier,
-              builder: (context, status, _) => Text('Current: $status'),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showStatusDialog(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.do_not_disturb),
-            title: const Text('Do Not Disturb'),
-            subtitle: ValueListenableBuilder<bool>(
-              valueListenable: _dndEnabledNotifier,
-              builder: (context, enabled, _) => Text(enabled ? 'Enabled' : 'Disabled'),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showDndConfigDialog(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.reply_all),
-            title: const Text('Auto-Reply'),
-            subtitle: ValueListenableBuilder<bool>(
-              valueListenable: _autoReplyNotifier,
-              builder: (context, enabled, _) => Text(enabled ? 'When away' : 'Disabled'),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showAutoReplyDialog(context);
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9O. CHAT FEATURES (Daily Use)
-          // ==========================================
-          _buildSectionHeader(context, 'Chat Features'),
-          ValueListenableBuilder<bool>(
-            valueListenable: _enableDraftsNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Message Drafts'),
-              subtitle: const Text('Save messages before sending'),
-              secondary: const Icon(Icons.edit_note),
-              onChanged: (v) {
-                _enableDraftsNotifier.value = v;
-                _showToast(context, 'Drafts ${v ? "enabled" : "disabled"}');
-              },
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _messageForwardingNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Message Forwarding'),
-              subtitle: const Text('Forward messages to other chats'),
-              secondary: const Icon(Icons.forward),
-              onChanged: (v) {
-                _messageForwardingNotifier.value = v;
-                _showToast(context, 'Message forwarding ${v ? "enabled" : "disabled"}');
-              },
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _chatSearchNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Chat Search'),
-              subtitle: const Text('Search messages and chats'),
-              secondary: const Icon(Icons.search),
-              onChanged: (v) {
-                _chatSearchNotifier.value = v;
-                _showToast(context, 'Chat search ${v ? "enabled" : "disabled"}');
-              },
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _smartNotificationsNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Smart Notifications'),
-              subtitle: const Text('AI-powered notification filtering'),
-              secondary: const Icon(Icons.smart_toy),
-              onChanged: (v) {
-                _smartNotificationsNotifier.value = v;
-                _showToast(context, 'Smart notifications ${v ? "enabled" : "disabled"}');
-              },
-            ),
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9Q. MESSAGE & SCHEDULING FEATURES
-          // ==========================================
-          _buildSectionHeader(context, 'Messages & Scheduling'),
-          ListTile(
-            leading: const Icon(Icons.schedule_send),
-            title: const Text('Schedule Messages'),
-            subtitle: const Text('Send messages at specific times'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showMessageSchedulingDialog(context);
-            },
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _quickReplyNotifier,
-            builder: (context, enabled, _) => ListTile(
-              leading: const Icon(Icons.quick_contacts_dialer),
-              title: const Text('Quick Replies'),
-              subtitle: Text(enabled ? '5 replies available' : 'Disabled'),
-              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              onTap: () {
-                _showQuickReplyDialog(context);
-              },
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _typingStatusNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Show Typing Status'),
-              subtitle: const Text('Let others see when you\'re typing'),
-              secondary: const Icon(Icons.edit),
-              onChanged: (v) {
-                _typingStatusNotifier.value = v;
-                _showToast(context, 'Typing status ${v ? "shown" : "hidden"}');
-              },
-            ),
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9R. CHAT ORGANIZATION
-          // ==========================================
-          _buildSectionHeader(context, 'Chat Organization'),
-          ValueListenableBuilder<bool>(
-            valueListenable: _pinnedChatsNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Pin Chats'),
-              subtitle: const Text('Pin important conversations to top'),
-              secondary: const Icon(Icons.push_pin),
-              onChanged: (v) {
-                _pinnedChatsNotifier.value = v;
-                _showToast(context, 'Pin chats ${v ? "enabled" : "disabled"}');
-              },
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.broadcast_on_personal),
-            title: const Text('Broadcast Lists'),
-            subtitle: const Text('Send messages to multiple people'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showBroadcastListDialog(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.bubble_chart),
-            title: const Text('Chat Bubble Style'),
-            subtitle: ValueListenableBuilder<String>(
-              valueListenable: _selectedChatBubbleStyleNotifier,
-              builder: (context, style, _) => Text(style),
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              _showChatBubbleCustomizationDialog(context);
-            },
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9S. PRIVACY & PRESENCE
-          // ==========================================
-          _buildSectionHeader(context, 'Privacy & Presence'),
-          ValueListenableBuilder<bool>(
-            valueListenable: _readReceiptControlNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Read Receipts'),
-              subtitle: const Text('Show when messages are read'),
-              secondary: const Icon(Icons.check_circle),
-              onChanged: (v) {
-                _readReceiptControlNotifier.value = v;
-                _showToast(context, 'Read receipts ${v ? "shown" : "hidden"}');
-              },
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _presenceIndicatorNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Presence Indicator'),
-              subtitle: const Text('Show when you\'re online/offline'),
-              secondary: const Icon(Icons.lens),
-              onChanged: (v) {
-                _presenceIndicatorNotifier.value = v;
-                _showToast(context, 'Presence indicator ${v ? "shown" : "hidden"}');
-              },
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _deviceSyncNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Sync Across Devices'),
-              subtitle: const Text('Keep chats synced on all devices'),
-              secondary: const Icon(Icons.sync),
-              onChanged: (v) {
-                _deviceSyncNotifier.value = v;
-                _showToast(context, 'Device sync ${v ? "enabled" : "disabled"}');
-              },
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _customNotificationSoundNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Custom Notification Sounds'),
-              subtitle: const Text('Different sounds for different chats'),
-              secondary: const Icon(Icons.notifications_none),
-              onChanged: (v) {
-                _customNotificationSoundNotifier.value = v;
-                _showToast(context, 'Custom sounds ${v ? "enabled" : "disabled"}');
-              },
-            ),
-          ),
-          const Divider(),
-
-          // ==========================================
-          // 9T. GESTURES & SHORTCUTS
-          // ==========================================
-          _buildSectionHeader(context, 'Gestures & Shortcuts'),
-          ValueListenableBuilder<bool>(
-            valueListenable: _gestureShortcutsNotifier,
-            builder: (context, enabled, _) => SwitchListTile(
-              value: enabled,
-              title: const Text('Gesture Shortcuts'),
-              subtitle: const Text('Swipe to reply, long-press for menu'),
-              secondary: const Icon(Icons.touch_app),
-              onChanged: (v) {
-                _gestureShortcutsNotifier.value = v;
-                _showToast(context, 'Gesture shortcuts ${v ? "enabled" : "disabled"}');
-              },
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (_gestureShortcutsNotifier.value)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text('Available Gestures:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                  SizedBox(height: 8),
-                  Text('← Swipe Left: Mark as read', style: TextStyle(fontSize: 12)),
-                  Text('→ Swipe Right: Reply', style: TextStyle(fontSize: 12)),
-                  Text('↓ Swipe Down: Archive chat', style: TextStyle(fontSize: 12)),
-                  Text('⟲ Long Press: Open menu', style: TextStyle(fontSize: 12)),
-                ],
-              ),
-            ),
-          const Divider(),
-
-          // ==========================================
-          // 9P. ADVANCED OPTIONS
-          // ==========================================
-          _buildSectionHeader(context, 'Advanced Options'),
-          ListTile(
-            leading: const Icon(Icons.settings_applications),
-            title: const Text('API Configuration'),
-            subtitle: const Text('Backend server settings'),
-            onTap: () {
-              _showInfoDialog(context, 'API Configuration', 'Backend: Reyaansh-Chat-Backend\nURL: https://Reyaansh-Chat-Backend.onrender.com\nTimeout: 30s\nVersion: 1.9');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.code),
-            title: const Text('Database Cache'),
-            subtitle: const Text('Manage local database cache'),
-            onTap: () {
-              _showToast(context, 'Database Cache: 15 MB');
-            },
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: _analyticsEnabledNotifier,
-            builder: (context, enabled, _) => ListTile(
-              leading: const Icon(Icons.analytics),
-              title: const Text('Usage Analytics'),
-              subtitle: const Text('Help improve the app'),
-              trailing: Switch(
-                value: enabled,
-                onChanged: (v) {
-                  _analyticsEnabledNotifier.value = v;
-                  _showToast(context, 'Analytics ${v ? "enabled" : "disabled"}');
-                },
-              ),
-            ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.bug_report),
-            title: const Text('Send Crash Report'),
-            subtitle: const Text('Help us fix bugs faster'),
-            onTap: () {
-              _sendCrashReport(context);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.feedback),
-            title: const Text('Send Feedback'),
-            subtitle: const Text('Share your thoughts and suggestions'),
-            onTap: () {
-              _showFeedbackDialog(context);
-            },
-          ),
-          
-          const Divider(),
-          
-          // ==========================================
-          // 10. DANGER ZONE
-          // ==========================================
-          const SizedBox(height: 16),
           ListTile(
             leading: const Icon(Icons.delete_forever, color: Colors.redAccent),
             title: const Text('Clear App Data', style: TextStyle(color: Colors.redAccent)),
-            subtitle: const Text('Reset all preferences and cache'),
-            onTap: () {
-              _showConfirmDialog(context, 'Clear All Data', 'This will reset all app settings, preferences, and cache. Continue?', () async {
+            onTap: () async {
+              _showConfirmDialog(context, 'Clear All Data', 'This will reset preferences and cache. Continue?', () async {
                 PaintingBinding.instance.imageCache.clear();
                 PaintingBinding.instance.imageCache.clearLiveImages();
-                // Clear all shared preferences
                 await EnterpriseSession._prefs.clear();
-                if (context.mounted) {
-                  _showToast(context, 'All app data cleared successfully');
-                  // Optionally restart the app or reload settings
-                }
+                if (context.mounted) _showToast(context, 'All app data cleared');
               });
             },
           ),
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text('Logout', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-            subtitle: const Text('Sign out from this device'),
-            onTap: () async {
-              _showConfirmDialog(context, 'Logout', 'Are you sure you want to logout?', () async {
-                await EnterpriseSession.logout();
-                if (context.mounted) {
-                  _showToast(context, 'Logged out successfully');
-                  // Return to login screen by popping all routes
-                  Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false);
-                }
-              });
-            },
+            title: const Text('Logout', style: TextStyle(color: Colors.red)),
+            onTap: () => _showConfirmDialog(context, 'Logout', 'Sign out from this device?', () async { await EnterpriseSession.logout(); if (context.mounted) _showToast(context, 'Logged out'); Navigator.of(context).pushNamedAndRemoveUntil('/', (_) => false); }),
           ),
-          const SizedBox(height: 48), // Padding at bottom for scrolling
+          const SizedBox(height: 48),
         ],
       ),
     );
@@ -1783,6 +1173,7 @@ Active since app launch
                   leading: const Icon(Icons.check_circle, color: Colors.blue),
                   title: const Text('English (US)'),
                   onTap: () {
+                    _languageNotifier.value = 'English (US)';
                     Navigator.of(dialogContext).pop();
                     _showToast(context, 'Language set to English');
                   },
@@ -1790,6 +1181,7 @@ Active since app launch
                 ListTile(
                   title: const Text('Spanish (ES)'),
                   onTap: () {
+                    _languageNotifier.value = 'Spanish (ES)';
                     Navigator.of(dialogContext).pop();
                     _showToast(context, 'Language changed to Spanish');
                   },
@@ -1797,6 +1189,7 @@ Active since app launch
                 ListTile(
                   title: const Text('French (FR)'),
                   onTap: () {
+                    _languageNotifier.value = 'French (FR)';
                     Navigator.of(dialogContext).pop();
                     _showToast(context, 'Language changed to French');
                   },
@@ -1804,6 +1197,7 @@ Active since app launch
                 ListTile(
                   title: const Text('German (DE)'),
                   onTap: () {
+                    _languageNotifier.value = 'German (DE)';
                     Navigator.of(dialogContext).pop();
                     _showToast(context, 'Language changed to German');
                   },
@@ -1811,6 +1205,7 @@ Active since app launch
                 ListTile(
                   title: const Text('Hindi (HI)'),
                   onTap: () {
+                    _languageNotifier.value = 'Hindi (HI)';
                     Navigator.of(dialogContext).pop();
                     _showToast(context, 'Language changed to Hindi');
                   },
@@ -1824,14 +1219,7 @@ Active since app launch
   }
 
   void _exportSettings(BuildContext context) {
-    final settings = {
-      'theme': EnterpriseSession.currentThemeVariant,
-      'themeSeed': EnterpriseSession.themeSeed.toARGB32(),
-      'notifications': EnterpriseSession.notificationsEnabled,
-      'timestamp': DateTime.now().toIso8601String(),
-      'version': '1.9',
-    };
-    final jsonString = jsonEncode(settings);
+    final jsonString = exportSettingsToJson();
     Clipboard.setData(ClipboardData(text: jsonString));
     _showToast(context, 'Settings exported to clipboard');
   }
@@ -1851,6 +1239,7 @@ Active since app launch
                   leading: const Icon(Icons.check_circle, color: Colors.blue),
                   title: const Text('United States'),
                   onTap: () {
+                    _regionNotifier.value = 'United States';
                     Navigator.pop(dialogContext);
                     _showToast(context, 'Region set to United States');
                   },
@@ -1858,6 +1247,7 @@ Active since app launch
                 ListTile(
                   title: const Text('Europe'),
                   onTap: () {
+                    _regionNotifier.value = 'Europe';
                     Navigator.pop(dialogContext);
                     _showToast(context, 'Region set to Europe');
                   },
@@ -1865,6 +1255,7 @@ Active since app launch
                 ListTile(
                   title: const Text('Asia'),
                   onTap: () {
+                    _regionNotifier.value = 'Asia';
                     Navigator.pop(dialogContext);
                     _showToast(context, 'Region set to Asia');
                   },
@@ -1872,6 +1263,7 @@ Active since app launch
                 ListTile(
                   title: const Text('India'),
                   onTap: () {
+                    _regionNotifier.value = 'India';
                     Navigator.pop(dialogContext);
                     _showToast(context, 'Region set to India');
                   },
@@ -1879,6 +1271,7 @@ Active since app launch
                 ListTile(
                   title: const Text('Australia'),
                   onTap: () {
+                    _regionNotifier.value = 'Australia';
                     Navigator.pop(dialogContext);
                     _showToast(context, 'Region set to Australia');
                   },
@@ -1893,22 +1286,48 @@ Active since app launch
   }
 
   void _showImportDialog(BuildContext context) {
+    final importController = TextEditingController();
+
     showDialog(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Import Settings'),
-          content: const Text('Paste your settings JSON below to restore them.'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Paste your settings JSON below to restore them.'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: importController,
+                maxLines: 6,
+                decoration: InputDecoration(
+                  hintText: '{ "theme": "dark", "notifications": true }',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () {
+                importController.dispose();
+                Navigator.pop(dialogContext);
+              },
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () {
+              onPressed: () async {
+                final jsonValue = importController.text.trim();
+                importController.dispose();
                 Navigator.pop(dialogContext);
-                _showToast(context, 'Settings imported successfully! ✓');
+                if (jsonValue.isEmpty) {
+                  _showToast(context, 'Please paste valid settings JSON.');
+                  return;
+                }
+                final success = await SettingsScreen.importSettingsFromJson(jsonValue);
+                _showToast(context, success ? 'Settings imported successfully! ✓' : 'Unable to import settings.');
               },
               child: const Text('Import'),
             ),
@@ -2005,7 +1424,7 @@ Active since app launch
 
   void _sendCrashReport(BuildContext context) {
     final reportData = {
-      'app_version': '1.9',
+      'app_version': '1.10',
       'timestamp': DateTime.now().toIso8601String(),
       'platform': Theme.of(context).platform.name,
       'error': 'Test crash report',
@@ -2075,7 +1494,7 @@ Active since app launch
             children: const [
               Text('Debug Information:', style: TextStyle(fontWeight: FontWeight.w600)),
               SizedBox(height: 12),
-              Text('App Version: 1.9'),
+              Text('App Version: 1.10'),
               Text('Build: Release'),
               Text('Platform: Web/Mobile'),
               Text('Flutter Version: 3.x'),
@@ -2253,12 +1672,14 @@ Active since app launch
             ),
             FilledButton(
               onPressed: () {
-                _proxyHostNotifier.value = hostController.text;
-                _proxyPortNotifier.value = portController.text;
+                final hostText = hostController.text.trim();
+                final portText = portController.text.trim();
+                _proxyHostNotifier.value = hostText;
+                _proxyPortNotifier.value = portText;
                 hostController.dispose();
                 portController.dispose();
                 Navigator.pop(dialogContext);
-                _showToast(context, 'Proxy configured: ${_proxyTypeNotifier.value}\nHost: ${hostController.text.isEmpty ? "default" : hostController.text}');
+                _showToast(context, 'Proxy configured: ${_proxyTypeNotifier.value}\nHost: ${hostText.isEmpty ? "default" : hostText}');
               },
               child: const Text('Save'),
             ),
@@ -2800,6 +2221,316 @@ Active since app launch
                 onPressed: () => _showToast(context, 'Add new quick reply'),
                 child: const Text('Add Reply'),
               ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showGroupManagementDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Group Management'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Create Group'),
+                leading: const Icon(Icons.group_add),
+                onTap: () {
+                  Navigator.pop(dialogContext);
+                  _showToast(context, 'Create new group');
+                },
+              ),
+              ListTile(
+                title: const Text('Your Groups (3)'),
+                leading: const Icon(Icons.groups),
+                onTap: () => _showToast(context, 'View all groups'),
+              ),
+              ListTile(
+                title: const Text('Group Settings'),
+                leading: const Icon(Icons.settings),
+                onTap: () => _showToast(context, 'Open group settings'),
+              ),
+              ListTile(
+                title: const Text('Muted Groups'),
+                leading: const Icon(Icons.volume_off),
+                onTap: () => _showToast(context, 'View muted groups'),
+              ),
+              ListTile(
+                title: const Text('Group Notifications'),
+                leading: const Icon(Icons.notifications),
+                onTap: () => _showToast(context, 'Customize group notifications'),
+              ),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showBlockedContactsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Block & Report'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ValueListenableBuilder<bool>(
+                valueListenable: _blockUnknownContactsNotifier,
+                builder: (context, enabled, _) => SwitchListTile(
+                  title: const Text('Block Unknown Contacts'),
+                  value: enabled,
+                  onChanged: (v) => _blockUnknownContactsNotifier.value = v,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Blocked Contacts (2)', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              ListTile(
+                title: const Text('Spam Number +1234567890'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => _showToast(context, 'Contact unblocked'),
+                ),
+              ),
+              ListTile(
+                title: const Text('Unknown User #12345'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => _showToast(context, 'Contact unblocked'),
+                ),
+              ),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showToast(context, 'Block unknown contacts ${_blockUnknownContactsNotifier.value ? "enabled" : "disabled"} ✓');
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showMessageSettingsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Message Settings'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ValueListenableBuilder<bool>(
+                valueListenable: _messageEditingNotifier,
+                builder: (context, enabled, _) => SwitchListTile(
+                  title: const Text('Edit Messages'),
+                  value: enabled,
+                  onChanged: (v) => _messageEditingNotifier.value = v,
+                ),
+              ),
+              ValueListenableBuilder<bool>(
+                valueListenable: _messageDeleteAfterNotifier,
+                builder: (context, enabled, _) => SwitchListTile(
+                  title: const Text('Delete After Time'),
+                  value: enabled,
+                  onChanged: (v) => _messageDeleteAfterNotifier.value = v,
+                ),
+              ),
+              if (_messageDeleteAfterNotifier.value) ...[
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text('Delete after:', style: TextStyle(fontWeight: FontWeight.w600)),
+                      SizedBox(height: 8),
+                      Text('24 hours'),
+                    ],
+                  ),
+                ),
+              ],
+              ValueListenableBuilder<bool>(
+                valueListenable: _messageReactionsNotifier,
+                builder: (context, enabled, _) => SwitchListTile(
+                  title: const Text('Message Reactions'),
+                  subtitle: const Text('React with emoji'),
+                  value: enabled,
+                  onChanged: (v) => _messageReactionsNotifier.value = v,
+                ),
+              ),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showToast(context, 'Message settings saved ✓');
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showMediaSettingsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Media Settings'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ValueListenableBuilder<bool>(
+                valueListenable: _voiceMessageNotifier,
+                builder: (context, enabled, _) => SwitchListTile(
+                  title: const Text('Voice Messages'),
+                  value: enabled,
+                  onChanged: (v) {
+                    _voiceMessageNotifier.value = v;
+                  },
+                ),
+              ),
+              ValueListenableBuilder<bool>(
+                valueListenable: _videoMessageNotifier,
+                builder: (context, enabled, _) => SwitchListTile(
+                  title: const Text('Video Messages'),
+                  value: enabled,
+                  onChanged: (v) {
+                    _videoMessageNotifier.value = v;
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text('Video Quality:', style: TextStyle(fontWeight: FontWeight.w600)),
+                    SizedBox(height: 8),
+                    Text('High (Recommended)'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showToast(context, 'Media settings saved ✓');
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showThemeAndWallpaperDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Themes & Wallpapers'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Chat Wallpaper:', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              ValueListenableBuilder<bool>(
+                valueListenable: _customWallpaperNotifier,
+                builder: (context, enabled, _) => SwitchListTile(
+                  title: const Text('Custom Wallpaper'),
+                  value: enabled,
+                  onChanged: (v) {
+                    _customWallpaperNotifier.value = v;
+                  },
+                ),
+              ),
+              if (_customWallpaperNotifier.value) ...[
+                const SizedBox(height: 12),
+                GridView.count(
+                  crossAxisCount: 3,
+                  shrinkWrap: true,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.blue,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.purple,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showToast(context, 'Theme updated ✓');
+              },
+              child: const Text('Apply'),
+            ),
           ],
         );
       },
@@ -3392,6 +3123,7 @@ class _YouTubeEmbedState extends State<YouTubeEmbed> {
 Future<void> _showLocalNotification(RemoteMessage message) async {
   final remoteNotification = message.notification;
   if (remoteNotification == null) return;
+  if (SettingsScreen._isDndActive()) return;
 
   final notificationDetails = NotificationDetails(
     android: AndroidNotificationDetails(
@@ -3472,6 +3204,7 @@ void main() async {
 
   // 2. Initialize SharedPreferences for session persistence
   await EnterpriseSession.initializePreferences();
+  await SettingsScreen.initializePreferences();
 
   // 3. Initialise the native Firebase core engine architecture
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -3504,7 +3237,6 @@ class EnterpriseSession {
     _loadFromPreferences();
   }
 
-  // Load session data from SharedPreferences
   static void _loadFromPreferences() {
     userId = _prefs.getString('userId') ?? '';
     username = _prefs.getString('username') ?? '';
@@ -3644,9 +3376,9 @@ class LocalShareServer {
   }
 
   String _buildSharePageHtml() {
-    final displayName = htmlEscape.convert(EnterpriseSession.username);
-    final avatarUrl = htmlEscape.convert(EnterpriseSession.avatarUrl);
-    final sharedUserId = htmlEscape.convert(EnterpriseSession.userId);
+    final displayName = const HtmlEscape().convert(EnterpriseSession.username);
+    final avatarUrl = const HtmlEscape().convert(EnterpriseSession.avatarUrl);
+    final sharedUserId = const HtmlEscape().convert(EnterpriseSession.userId);
 
     final escapedAvatar = avatarUrl.isNotEmpty
         ? avatarUrl
@@ -4067,7 +3799,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.format_paint),
+                            const Icon(Icons.settings),
                             const SizedBox(width: 12.0),
                             Expanded(
                               child: Text(
@@ -4270,6 +4002,8 @@ class ChatDashboard extends StatefulWidget {
 class _ChatDashboardState extends State<ChatDashboard> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  bool _isComposing = false;
+  final Map<String, DateTime> _lastAutoReplySent = {};
 
   late final Stream<DatabaseEvent> _rtdbStream;
   late final Query _messagesQuery;
@@ -4288,6 +4022,12 @@ class _ChatDashboardState extends State<ChatDashboard> {
         .ref('messages')
         .onChildAdded
         .listen(_handleMessageAdded);
+
+    _textController.addListener(() {
+      setState(() {
+        _isComposing = _textController.text.isNotEmpty;
+      });
+    });
   }
 
   @override
@@ -4468,6 +4208,28 @@ class _ChatDashboardState extends State<ChatDashboard> {
           },
         ),
       );
+    }
+
+    final isStatusAway = SettingsScreen._currentStatusNotifier.value != 'Online';
+    final autoReplyEnabled = SettingsScreen._autoReplyNotifier.value && isStatusAway;
+    final lastReply = _lastAutoReplySent[triggerId];
+
+    if (autoReplyEnabled && (lastReply == null || DateTime.now().difference(lastReply) > const Duration(minutes: 10))) {
+      final replyText = SettingsScreen._autoReplyMessageNotifier.value.isNotEmpty
+          ? SettingsScreen._autoReplyMessageNotifier.value
+          : 'I am currently away and will reply soon.';
+
+      final replyReference = FirebaseDatabase.instance.ref('messages').push();
+      replyReference.set({
+        'text': replyText,
+        'mediaUrl': null,
+        'timestamp': ServerValue.timestamp,
+        'senderId': EnterpriseSession.userId,
+        'senderName': EnterpriseSession.username,
+        'senderAvatarUrl': EnterpriseSession.avatarUrl,
+      });
+
+      _lastAutoReplySent[triggerId] = DateTime.now();
     }
   }
 
@@ -4761,6 +4523,27 @@ class _ChatDashboardState extends State<ChatDashboard> {
                       },
                     ),
                   ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: SettingsScreen._typingIndicatorsNotifier,
+                    builder: (context, enabled, _) {
+                      if (!enabled || !_isComposing) {
+                        return const SizedBox.shrink();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit_note, size: 16.0, color: colors.primary),
+                            const SizedBox(width: 8.0),
+                            Text(
+                              'Typing...',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.primary),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                   _buildInputDock(colors),
                 ],
               ),
@@ -4796,23 +4579,37 @@ class _ChatDashboardState extends State<ChatDashboard> {
             ),
             const WidgetSpacer(width: 8.0),
             Expanded(
-              child: TextField(
-                controller: _textController,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (value) => _handleDispatch(value),
-                decoration: InputDecoration(
-                  hintText: "Type a message...",
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20.0,
-                    vertical: 10.0,
-                  ),
-                  filled: true,
-                  fillColor: colors.surfaceContainerHigh,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(28.0),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
+              child: ValueListenableBuilder<double>(
+                valueListenable: SettingsScreen._chatFontSizeNotifier,
+                builder: (context, fontSize, _) {
+                  return ValueListenableBuilder<bool>(
+                    valueListenable: SettingsScreen._sendWithEnterNotifier,
+                    builder: (context, sendWithEnter, _) {
+                      return TextField(
+                        controller: _textController,
+                        style: TextStyle(fontSize: fontSize),
+                        keyboardType: sendWithEnter ? TextInputType.text : TextInputType.multiline,
+                        textInputAction: sendWithEnter ? TextInputAction.send : TextInputAction.newline,
+                        minLines: 1,
+                        maxLines: sendWithEnter ? 1 : 5,
+                        onSubmitted: sendWithEnter ? (value) => _handleDispatch(value) : null,
+                        decoration: InputDecoration(
+                          hintText: "Type a message...",
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20.0,
+                            vertical: 10.0,
+                          ),
+                          filled: true,
+                          fillColor: colors.surfaceContainerHigh,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(28.0),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
             ),
             const WidgetSpacer(width: 8.0),
@@ -5160,14 +4957,38 @@ class MultiMediaMessageEngine extends StatelessWidget {
                                 const WidgetSpacer(height: 8.0),
                             ],
                             if (payload.message.isNotEmpty)
-                              Text(
-                                payload.message,
-                                style: TextStyle(
-                                  color: isMe
-                                      ? colors.onPrimaryContainer
-                                      : colors.onSurface,
-                                  fontSize: 15.0,
-                                ),
+                              ValueListenableBuilder<double>(
+                                valueListenable: SettingsScreen._chatFontSizeNotifier,
+                                builder: (context, fontSize, _) {
+                                  return Text(
+                                    payload.message,
+                                    style: TextStyle(
+                                      color: isMe
+                                          ? colors.onPrimaryContainer
+                                          : colors.onSurface,
+                                      fontSize: fontSize,
+                                    ),
+                                  );
+                                },
+                              ),
+                            if (isMe)
+                              ValueListenableBuilder<bool>(
+                                valueListenable: SettingsScreen._readReceiptsNotifier,
+                                builder: (context, enabled, _) {
+                                  if (!enabled) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Padding(
+                                    padding: const EdgeInsets.only(top: 6.0),
+                                    child: Text(
+                                      'Read',
+                                      style: TextStyle(
+                                        color: colors.onSurfaceVariant,
+                                        fontSize: 11.0,
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                             if (payload.reactions.isNotEmpty) ...[
                               const WidgetSpacer(height: 10.0),
