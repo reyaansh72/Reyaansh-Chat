@@ -16,7 +16,7 @@ import 'firebase_options.dart';
 
 const String kNotificationBackendUrl = String.fromEnvironment(
   'NOTIFICATION_BACKEND_URL',
-  defaultValue: 'https://your-render-backend.onrender.com',
+  defaultValue: 'https://Reyaansh-Chat-Backend.onrender.com',
 );
 
 const AndroidNotificationChannel _chatNotificationChannel = AndroidNotificationChannel(
