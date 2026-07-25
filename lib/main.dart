@@ -330,6 +330,21 @@ class SettingsScreen extends StatelessWidget {
   static final ValueNotifier<bool> _chatSearchNotifier = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> _smartNotificationsNotifier = ValueNotifier<bool>(true);
 
+  // Additional Daily Use Features
+  static final ValueNotifier<bool> _messageSchedulingNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> _pinnedChatsNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _readReceiptControlNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _presenceIndicatorNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _broadcastListNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _groupManagementNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _customNotificationSoundNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _gestureShortcutsNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _chatBubbleCustomizationNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<String> _selectedChatBubbleStyleNotifier = ValueNotifier<String>('Default');
+  static final ValueNotifier<bool> _quickReplyNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _typingStatusNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _deviceSyncNotifier = ValueNotifier<bool>(true);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1306,6 +1321,179 @@ Active since app launch
               },
             ),
           ),
+          const Divider(),
+
+          // ==========================================
+          // 9Q. MESSAGE & SCHEDULING FEATURES
+          // ==========================================
+          _buildSectionHeader(context, 'Messages & Scheduling'),
+          ListTile(
+            leading: const Icon(Icons.schedule_send),
+            title: const Text('Schedule Messages'),
+            subtitle: const Text('Send messages at specific times'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showMessageSchedulingDialog(context);
+            },
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _quickReplyNotifier,
+            builder: (context, enabled, _) => ListTile(
+              leading: const Icon(Icons.quick_contacts_dialer),
+              title: const Text('Quick Replies'),
+              subtitle: Text(enabled ? '5 replies available' : 'Disabled'),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () {
+                _showQuickReplyDialog(context);
+              },
+            ),
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _typingStatusNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Show Typing Status'),
+              subtitle: const Text('Let others see when you\'re typing'),
+              secondary: const Icon(Icons.edit),
+              onChanged: (v) {
+                _typingStatusNotifier.value = v;
+                _showToast(context, 'Typing status ${v ? "shown" : "hidden"}');
+              },
+            ),
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9R. CHAT ORGANIZATION
+          // ==========================================
+          _buildSectionHeader(context, 'Chat Organization'),
+          ValueListenableBuilder<bool>(
+            valueListenable: _pinnedChatsNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Pin Chats'),
+              subtitle: const Text('Pin important conversations to top'),
+              secondary: const Icon(Icons.push_pin),
+              onChanged: (v) {
+                _pinnedChatsNotifier.value = v;
+                _showToast(context, 'Pin chats ${v ? "enabled" : "disabled"}');
+              },
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.broadcast_on_personal),
+            title: const Text('Broadcast Lists'),
+            subtitle: const Text('Send messages to multiple people'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showBroadcastListDialog(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.bubble_chart),
+            title: const Text('Chat Bubble Style'),
+            subtitle: ValueListenableBuilder<String>(
+              valueListenable: _selectedChatBubbleStyleNotifier,
+              builder: (context, style, _) => Text(style),
+            ),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () {
+              _showChatBubbleCustomizationDialog(context);
+            },
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9S. PRIVACY & PRESENCE
+          // ==========================================
+          _buildSectionHeader(context, 'Privacy & Presence'),
+          ValueListenableBuilder<bool>(
+            valueListenable: _readReceiptControlNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Read Receipts'),
+              subtitle: const Text('Show when messages are read'),
+              secondary: const Icon(Icons.check_circle),
+              onChanged: (v) {
+                _readReceiptControlNotifier.value = v;
+                _showToast(context, 'Read receipts ${v ? "shown" : "hidden"}');
+              },
+            ),
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _presenceIndicatorNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Presence Indicator'),
+              subtitle: const Text('Show when you\'re online/offline'),
+              secondary: const Icon(Icons.lens),
+              onChanged: (v) {
+                _presenceIndicatorNotifier.value = v;
+                _showToast(context, 'Presence indicator ${v ? "shown" : "hidden"}');
+              },
+            ),
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _deviceSyncNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Sync Across Devices'),
+              subtitle: const Text('Keep chats synced on all devices'),
+              secondary: const Icon(Icons.sync),
+              onChanged: (v) {
+                _deviceSyncNotifier.value = v;
+                _showToast(context, 'Device sync ${v ? "enabled" : "disabled"}');
+              },
+            ),
+          ),
+          ValueListenableBuilder<bool>(
+            valueListenable: _customNotificationSoundNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Custom Notification Sounds'),
+              subtitle: const Text('Different sounds for different chats'),
+              secondary: const Icon(Icons.notifications_none),
+              onChanged: (v) {
+                _customNotificationSoundNotifier.value = v;
+                _showToast(context, 'Custom sounds ${v ? "enabled" : "disabled"}');
+              },
+            ),
+          ),
+          const Divider(),
+
+          // ==========================================
+          // 9T. GESTURES & SHORTCUTS
+          // ==========================================
+          _buildSectionHeader(context, 'Gestures & Shortcuts'),
+          ValueListenableBuilder<bool>(
+            valueListenable: _gestureShortcutsNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Gesture Shortcuts'),
+              subtitle: const Text('Swipe to reply, long-press for menu'),
+              secondary: const Icon(Icons.touch_app),
+              onChanged: (v) {
+                _gestureShortcutsNotifier.value = v;
+                _showToast(context, 'Gesture shortcuts ${v ? "enabled" : "disabled"}');
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_gestureShortcutsNotifier.value)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Text('Available Gestures:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                  SizedBox(height: 8),
+                  Text('← Swipe Left: Mark as read', style: TextStyle(fontSize: 12)),
+                  Text('→ Swipe Right: Reply', style: TextStyle(fontSize: 12)),
+                  Text('↓ Swipe Down: Archive chat', style: TextStyle(fontSize: 12)),
+                  Text('⟲ Long Press: Open menu', style: TextStyle(fontSize: 12)),
+                ],
+              ),
+            ),
           const Divider(),
 
           // ==========================================
@@ -2378,6 +2566,240 @@ Active since app launch
               },
               child: const Text('Save'),
             ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showMessageSchedulingDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Message Scheduling'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ValueListenableBuilder<bool>(
+                valueListenable: _messageSchedulingNotifier,
+                builder: (context, enabled, _) => SwitchListTile(
+                  title: const Text('Enable Message Scheduling'),
+                  value: enabled,
+                  onChanged: (v) => _messageSchedulingNotifier.value = v,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Schedule messages to send later:', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Column(
+                  children: [
+                    ListTile(
+                      title: const Text('Schedule Time'),
+                      subtitle: const Text('Select when to send'),
+                      onTap: () => _showToast(context, 'Time picker opens'),
+                    ),
+                    const SizedBox(height: 8),
+                    ListTile(
+                      title: const Text('Message Template'),
+                      subtitle: const Text('Save message templates'),
+                      onTap: () => _showToast(context, '5 templates saved'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showToast(context, 'Message scheduling ${_messageSchedulingNotifier.value ? "enabled" : "disabled"} ✓');
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showBroadcastListDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Broadcast Lists'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Create New List'),
+                leading: const Icon(Icons.add_circle),
+                onTap: () {
+                  Navigator.pop(dialogContext);
+                  _showToast(context, 'New broadcast list created');
+                },
+              ),
+              const Divider(),
+              const Text('Your Lists:', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              ListTile(
+                title: const Text('Family'),
+                subtitle: const Text('12 members'),
+                onTap: () => _showToast(context, 'Open Family list'),
+              ),
+              ListTile(
+                title: const Text('Friends'),
+                subtitle: const Text('34 members'),
+                onTap: () => _showToast(context, 'Open Friends list'),
+              ),
+              ListTile(
+                title: const Text('Work'),
+                subtitle: const Text('8 members'),
+                onTap: () => _showToast(context, 'Open Work list'),
+              ),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showChatBubbleCustomizationDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Chat Bubble Style'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ValueListenableBuilder<String>(
+                valueListenable: _selectedChatBubbleStyleNotifier,
+                builder: (context, style, _) => Column(
+                  children: [
+                    RadioListTile<String>(
+                      title: const Text('Default (Rounded)'),
+                      value: 'Default',
+                      groupValue: style,
+                      onChanged: (v) => _selectedChatBubbleStyleNotifier.value = v ?? 'Default',
+                    ),
+                    RadioListTile<String>(
+                      title: const Text('Squircle'),
+                      value: 'Squircle',
+                      groupValue: style,
+                      onChanged: (v) => _selectedChatBubbleStyleNotifier.value = v ?? 'Squircle',
+                    ),
+                    RadioListTile<String>(
+                      title: const Text('Sharp Corners'),
+                      value: 'Sharp',
+                      groupValue: style,
+                      onChanged: (v) => _selectedChatBubbleStyleNotifier.value = v ?? 'Sharp',
+                    ),
+                    RadioListTile<String>(
+                      title: const Text('Pill Shaped'),
+                      value: 'Pill',
+                      groupValue: style,
+                      onChanged: (v) => _selectedChatBubbleStyleNotifier.value = v ?? 'Pill',
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Preview', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Text(
+                  'Sample message',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showToast(context, 'Chat bubble style: ${_selectedChatBubbleStyleNotifier.value} ✓');
+              },
+              child: const Text('Apply'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showQuickReplyDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Quick Reply Options'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ValueListenableBuilder<bool>(
+                valueListenable: _quickReplyNotifier,
+                builder: (context, enabled, _) => SwitchListTile(
+                  title: const Text('Enable Quick Reply'),
+                  value: enabled,
+                  onChanged: (v) => _quickReplyNotifier.value = v,
+                ),
+              ),
+              if (_quickReplyNotifier.value) ...[
+                const SizedBox(height: 12),
+                const Text('Your Quick Replies:', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                ...['Ok 👍', 'Thanks! 🙏', 'Got it! ✓', 'See you later! 👋', 'Sounds good! 😊'].map(
+                  (reply) => ListTile(
+                    title: Text(reply),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.edit),
+                      onPressed: () => _showToast(context, 'Edit quick reply'),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
+            ),
+            if (_quickReplyNotifier.value)
+              FilledButton(
+                onPressed: () => _showToast(context, 'Add new quick reply'),
+                child: const Text('Add Reply'),
+              ),
           ],
         );
       },
