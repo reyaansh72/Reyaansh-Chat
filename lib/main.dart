@@ -3408,7 +3408,7 @@ Future<void> _initializeFirebaseMessaging() async {
     final androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     final initSettings = InitializationSettings(android: androidInit);
     await _localNotificationsPlugin.initialize(
-      initializationSettings: initSettings,
+      initSettings,
       onDidReceiveNotificationResponse: (response) {
         // Handle local notification tap if desired.
       },
@@ -5661,228 +5661,137 @@ class MultiMediaMessageEngine extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                            if (payload.attachmentUrl != null &&
-                                payload.attachmentUrl!.isNotEmpty) ...[
-                              if (_looksLikeImageUrl(payload.attachmentUrl!))
-                                GestureDetector(
-                                  onTap: () {
-                                    _openUrl(context, payload.attachmentUrl!);
-                                  },
-                                  child: Stack(
-                                    alignment: Alignment.bottomRight,
-                                    children: [
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(12.0),
-                                        child: Image.network(
-                                          payload.attachmentUrl!,
-                                          fit: BoxFit.cover,
-                                          width: double.infinity,
-                                          height: 180,
-                                          errorBuilder:
-                                              (context, error, stackTrace) {
-                                            return const NetworkRecoveryFallbackWidget();
-                                          },
-                                          loadingBuilder:
-                                              (context, child, loadingProgress) {
-                                            if (loadingProgress == null) {
-                                              return child;
-                                            }
-                                            return Container(
-                                              height: 180,
-                                              color: colors.surfaceContainerHigh,
-                                              child: const Center(
-                                                child: CircularProgressIndicator(),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      Container(
-                                        margin: const EdgeInsets.all(12.0),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10.0,
-                                          vertical: 6.0,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withOpacity(0.52),
-                                          borderRadius:
-                                              BorderRadius.circular(16.0),
-                                        ),
-                                        child: Text(
-                                          'Open',
-                                          style: TextStyle(
-                                            fontSize: 12.0,
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w600,
+                              if (payload.attachmentUrl != null &&
+                                  payload.attachmentUrl!.isNotEmpty) ...[
+                                if (_looksLikeImageUrl(payload.attachmentUrl!))
+                                  GestureDetector(
+                                    onTap: () {
+                                      _openUrl(context, payload.attachmentUrl!);
+                                    },
+                                    child: Stack(
+                                      alignment: Alignment.bottomRight,
+                                      children: [
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(12.0),
+                                          child: Image.network(
+                                            payload.attachmentUrl!,
+                                            fit: BoxFit.cover,
+                                            width: double.infinity,
+                                            height: 180,
+                                            errorBuilder:
+                                                (context, error, stackTrace) {
+                                              return const NetworkRecoveryFallbackWidget();
+                                            },
+                                            loadingBuilder:
+                                                (context, child, loadingProgress) {
+                                              if (loadingProgress == null) {
+                                                return child;
+                                              }
+                                              return Container(
+                                                height: 180,
+                                                color: colors.surfaceContainerHigh,
+                                                child: const Center(
+                                                  child: CircularProgressIndicator(),
+                                                ),
+                                              );
+                                            },
                                           ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              else
-                                Container(
-                                  width: double.infinity,
-                                  decoration: BoxDecoration(
-                                    color: isMe
-                                        ? colors.primary.withOpacity(0.12)
-                                        : colors.surfaceVariant,
-                                    borderRadius: BorderRadius.circular(14.0),
-                                  ),
-                                  padding: const EdgeInsets.all(14.0),
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.center,
-                                              children: [
-                                                Icon(
-                                                  _attachmentIconForUrl(
-                                                      payload.attachmentUrl!),
-                                                  size: 28,
-                                                  color: isMe
-                                                      ? colors.onPrimaryContainer
-                                                      : colors.primary,
-                                                ),
-                                                const WidgetSpacer(width: 12.0),
-                                                Expanded(
-                                                  child: Text(
-                                                    _attachmentLabelForUrl(
-                                                        payload.attachmentUrl!),
-                                                    style: TextStyle(
-                                                      fontWeight: FontWeight.w600,
-                                                      color: isMe
-                                                          ? colors.onPrimaryContainer
-                                                          : colors.onSurface,
-                                                    ),
-                                                    maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
-                                                  ),
-                                                ),
-                                              ],
+                                        Container(
+                                          margin: const EdgeInsets.all(12.0),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10.0,
+                                            vertical: 6.0,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.black.withOpacity(0.52),
+                                            borderRadius:
+                                                BorderRadius.circular(16.0),
+                                          ),
+                                          child: const Text(
+                                            'Open',
+                                            style: TextStyle(
+                                              fontSize: 12.0,
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w600,
                                             ),
-                                            const WidgetSpacer(height: 10.0),
-                                            Text(
-                                              payload.attachmentUrl!,
-                                              style: TextStyle(
-                                                color: isMe
-                                                    ? colors.onPrimaryContainer
-                                                    : colors.onSurfaceVariant,
-                                                fontSize: 12.5,
-                                              ),
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            const WidgetSpacer(height: 12.0),
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: TextButton.icon(
-                                                onPressed: () {
-                                                  _openUrl(
-                                                      context, payload.attachmentUrl!);
-                                                },
-                                                icon: Icon(
-                                                  Icons.open_in_new,
-                                                  size: 18,
-                                                  color: isMe
-                                                      ? colors.onPrimaryContainer
-                                                      : colors.primary,
-                                                ),
-                                                label: Text(
-                                                  'Open',
-                                                  style: TextStyle(
-                                                    color: isMe
-                                                        ? colors.onPrimaryContainer
-                                                        : colors.primary,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
+                              ],
                               if (payload.message.isNotEmpty)
                                 const WidgetSpacer(height: 8.0),
-                            ],
-                            if (payload.message.isNotEmpty)
-                              ValueListenableBuilder<double>(
-                                valueListenable: SettingsScreen._chatFontSizeNotifier,
-                                builder: (context, fontSize, _) {
-                                  return Text(
-                                    payload.message,
-                                    style: TextStyle(
-                                      color: isMe
-                                          ? colors.onPrimaryContainer
-                                          : colors.onSurface,
-                                      fontSize: fontSize,
-                                    ),
-                                  );
-                                },
-                              ),
-                            if (isMe)
-                              ValueListenableBuilder<bool>(
-                                valueListenable: SettingsScreen._readReceiptsNotifier,
-                                builder: (context, enabled, _) {
-                                  if (!enabled) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  return Padding(
-                                    padding: const EdgeInsets.only(top: 6.0),
-                                    child: Text(
-                                      'Read',
+                              if (payload.message.isNotEmpty)
+                                ValueListenableBuilder<double>(
+                                  valueListenable: SettingsScreen._chatFontSizeNotifier,
+                                  builder: (context, fontSize, _) {
+                                    return Text(
+                                      payload.message,
                                       style: TextStyle(
-                                        color: colors.onSurfaceVariant,
-                                        fontSize: 11.0,
+                                        color: isMe
+                                            ? colors.onPrimaryContainer
+                                            : colors.onSurface,
+                                        fontSize: fontSize,
                                       ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            if (payload.reactions.isNotEmpty) ...[
-                              const WidgetSpacer(height: 10.0),
-                              Wrap(
-                                spacing: 6.0,
-                                runSpacing: 4.0,
-                                children: payload.reactions.entries.map((
-                                  entry,
-                                ) {
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10.0,
-                                      vertical: 6.0,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: isMe
-                                          ? colors.primary.withValues(
-                                              alpha: 0.18,
-                                            )
-                                          : colors.surfaceContainerHighest,
-                                      borderRadius: BorderRadius.circular(18.0),
-                                    ),
-                                    child: Text(
-                                      '${entry.key} ${entry.value}',
-                                      style: TextStyle(
-                                        color: colors.onSurfaceVariant,
-                                        fontSize: 12.0,
-                                        fontWeight: FontWeight.w600,
+                                    );
+                                  },
+                                ),
+                              if (isMe)
+                                ValueListenableBuilder<bool>(
+                                  valueListenable: SettingsScreen._readReceiptsNotifier,
+                                  builder: (context, enabled, _) {
+                                    if (!enabled) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 6.0),
+                                      child: Text(
+                                        'Read',
+                                        style: TextStyle(
+                                          color: colors.onSurfaceVariant,
+                                          fontSize: 11.0,
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
+                                    );
+                                  },
+                                ),
+                              if (payload.reactions.isNotEmpty) ...[
+                                const WidgetSpacer(height: 10.0),
+                                Wrap(
+                                  spacing: 6.0,
+                                  runSpacing: 4.0,
+                                  children: payload.reactions.entries.map((
+                                    entry,
+                                  ) {
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10.0,
+                                        vertical: 6.0,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isMe
+                                            ? colors.primary.withValues(
+                                                alpha: 0.18,
+                                              )
+                                            : colors.surfaceContainerHighest,
+                                        borderRadius: BorderRadius.circular(18.0),
+                                      ),
+                                      child: Text(
+                                        '${entry.key} ${entry.value}',
+                                        style: TextStyle(
+                                          color: colors.onSurfaceVariant,
+                                          fontSize: 12.0,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
                     ),
