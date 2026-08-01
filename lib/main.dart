@@ -327,6 +327,8 @@ class SettingsScreen extends StatelessWidget {
   static final ValueNotifier<double> _chatFontSizeNotifier = ValueNotifier<double>(14.0);
   static final ValueNotifier<int> _developerTapCount = ValueNotifier<int>(0);
   static final ValueNotifier<String?> _latestVersionNotifier = ValueNotifier<String?>(null);
+  static final ValueNotifier<String> _customCurrentVersionNotifier = ValueNotifier<String>('');
+  static final ValueNotifier<String> _customLatestVersionNotifier = ValueNotifier<String>('');
   static final ValueNotifier<bool> _checkingUpdateNotifier = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> _isDownloadingNotifier = ValueNotifier<bool>(false);
   static final ValueNotifier<double?> _downloadProgressNotifier = ValueNotifier<double?>(null);
@@ -411,6 +413,12 @@ class SettingsScreen extends StatelessWidget {
   static final ValueNotifier<bool> _customWallpaperNotifier = ValueNotifier<bool>(false);
   static bool _settingsLoading = false;
 
+  static String get effectiveCurrentVersion =>
+      _customCurrentVersionNotifier.value.isNotEmpty ? _customCurrentVersionNotifier.value : _currentVersion;
+
+  static String get effectiveLatestVersion =>
+      _customLatestVersionNotifier.value.isNotEmpty ? _customLatestVersionNotifier.value : '';
+
   static Future<void> initializePreferences() async {
     _registerPersistenceListeners();
     _loadFromPreferences();
@@ -459,6 +467,8 @@ class SettingsScreen extends StatelessWidget {
     saveBool('autoBackupSettings', _autoBackupSettingsNotifier);
     saveBool('vpnEnabled', _vpnEnabledNotifier);
     saveBool('analyticsEnabled', _analyticsEnabledNotifier);
+    saveString('customCurrentVersion', _customCurrentVersionNotifier);
+    saveString('customLatestVersion', _customLatestVersionNotifier);
     saveString('proxyType', _proxyTypeNotifier);
     saveString('proxyHost', _proxyHostNotifier);
     saveString('proxyPort', _proxyPortNotifier);
@@ -527,6 +537,8 @@ class SettingsScreen extends StatelessWidget {
     _autoBackupSettingsNotifier.value = EnterpriseSession._prefs.getBool('autoBackupSettings') ?? true;
     _vpnEnabledNotifier.value = EnterpriseSession._prefs.getBool('vpnEnabled') ?? false;
     _analyticsEnabledNotifier.value = EnterpriseSession._prefs.getBool('analyticsEnabled') ?? true;
+    _customCurrentVersionNotifier.value = EnterpriseSession._prefs.getString('customCurrentVersion') ?? '';
+    _customLatestVersionNotifier.value = EnterpriseSession._prefs.getString('customLatestVersion') ?? '';
     _proxyTypeNotifier.value = EnterpriseSession._prefs.getString('proxyType') ?? 'Direct';
     _proxyHostNotifier.value = EnterpriseSession._prefs.getString('proxyHost') ?? '';
     _proxyPortNotifier.value = EnterpriseSession._prefs.getString('proxyPort') ?? '';
@@ -696,6 +708,8 @@ class SettingsScreen extends StatelessWidget {
       'quickReply': _quickReplyNotifier.value,
       'customNotificationSound': _customNotificationSoundNotifier.value,
       'analyticsEnabled': _analyticsEnabledNotifier.value,
+      'customCurrentVersion': _customCurrentVersionNotifier.value,
+      'customLatestVersion': _customLatestVersionNotifier.value,
       'backupSettings': _autoBackupSettingsNotifier.value,
       'timestamp': DateTime.now().toIso8601String(),
       'version': _currentVersion,
@@ -723,6 +737,8 @@ class SettingsScreen extends StatelessWidget {
 
       _languageNotifier.value = data['language']?.toString() ?? _languageNotifier.value;
       _regionNotifier.value = data['region']?.toString() ?? _regionNotifier.value;
+      _customCurrentVersionNotifier.value = data['customCurrentVersion']?.toString() ?? _customCurrentVersionNotifier.value;
+      _customLatestVersionNotifier.value = data['customLatestVersion']?.toString() ?? _customLatestVersionNotifier.value;
       _sendWithEnterNotifier.value = data['sendWithEnter'] == true;
       _readReceiptsNotifier.value = data['readReceipts'] == true;
       _typingIndicatorsNotifier.value = data['typingIndicators'] == true;
@@ -992,7 +1008,10 @@ class SettingsScreen extends StatelessWidget {
                             if (latestVersion == null || latestVersion.isEmpty) {
                               return const Text('Tap to compare current version with GitHub release');
                             }
-                            return Text('Latest version: $latestVersion');
+                            final overrideText = _customLatestVersionNotifier.value.isNotEmpty
+                                ? ' (override)'
+                                : '';
+                            return Text('Latest version: $latestVersion$overrideText');
                           },
                         );
                       }(),
@@ -1005,8 +1024,29 @@ class SettingsScreen extends StatelessWidget {
                 );
               },
             ),
+            const Divider(),
+            _buildSectionHeader(context, 'Debugging'),
+            ListTile(
+              leading: const Icon(Icons.developer_mode),
+              title: const Text('Debug Version Overrides'),
+              subtitle: ValueListenableBuilder<String>(
+                valueListenable: _customCurrentVersionNotifier,
+                builder: (context, currentOverride, _) {
+                  return ValueListenableBuilder<String>(
+                    valueListenable: _customLatestVersionNotifier,
+                    builder: (context, latestOverride, _) {
+                      return Text(
+                        currentOverride.isNotEmpty || latestOverride.isNotEmpty
+                            ? 'Current: ${currentOverride.isNotEmpty ? currentOverride : SettingsScreen._currentVersion}, Latest: ${latestOverride.isNotEmpty ? latestOverride : 'GitHub'}'
+                            : 'No overrides set. Tap to configure.',
+                      );
+                    },
+                  );
+                },
+              ),
+              onTap: () => _showDeveloperOptions(context),
+            ),
           ],
-
           const Divider(),
           ListTile(
             leading: const Icon(Icons.delete_forever, color: Colors.redAccent),
@@ -1532,44 +1572,96 @@ class SettingsScreen extends StatelessWidget {
   }
 
   void _showDeveloperOptions(BuildContext context) {
+    final currentVersionController = TextEditingController(text: _customCurrentVersionNotifier.value);
+    final latestVersionController = TextEditingController(text: _customLatestVersionNotifier.value);
+
     showDialog(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('🔧 Developer Options'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text('Debug Information:', style: TextStyle(fontWeight: FontWeight.w600)),
-              SizedBox(height: 12),
-              Text('App Version: 1.10'),
-              Text('Build: Release'),
-              Text('Platform: Web/Mobile'),
-              Text('Flutter Version: 3.x'),
-              SizedBox(height: 12),
-              Text('Features:', style: TextStyle(fontWeight: FontWeight.w600)),
-              SizedBox(height: 8),
-              Text('✓ Hot Reload Enabled'),
-              Text('✓ Debug Painting Active'),
-              Text('✓ Performance Monitoring'),
-              Text('✓ Network Throttling: Off'),
-            ],
-          ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Close'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                _showToast(context, 'Developer mode enabled! 🔧');
-              },
-              child: const Text('OK'),
-            ),
-          ],
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('🔧 Developer Options'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Debug Information:', style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 12),
+                    Text('App Version: ${SettingsScreen._currentVersion}'),
+                    Text('Effective Current Version: ${SettingsScreen.effectiveCurrentVersion}'),
+                    Text('Effective Latest Version: ${SettingsScreen.effectiveLatestVersion.isNotEmpty ? SettingsScreen.effectiveLatestVersion : 'GitHub release'}'),
+                    const Text('Build: Release'),
+                    const Text('Platform: Web/Mobile'),
+                    const Text('Flutter Version: 3.x'),
+                    const SizedBox(height: 12),
+                    const Text('Version Overrides:', style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: currentVersionController,
+                      decoration: const InputDecoration(
+                        labelText: 'Override Current Version',
+                        hintText: 'Leave empty to use actual app version',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: latestVersionController,
+                      decoration: const InputDecoration(
+                        labelText: 'Override Latest Version',
+                        hintText: 'Leave empty to use GitHub release version',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('Features:', style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    const Text('✓ Hot Reload Enabled'),
+                    const Text('✓ Debug Painting Active'),
+                    const Text('✓ Performance Monitoring'),
+                    const Text('✓ Network Throttling: Off'),
+                  ],
+                ),
+              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    currentVersionController.clear();
+                    latestVersionController.clear();
+                    _customCurrentVersionNotifier.value = '';
+                    _customLatestVersionNotifier.value = '';
+                    setState(() {});
+                    _showToast(context, 'Debug version overrides cleared.');
+                  },
+                  child: const Text('Clear'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    currentVersionController.dispose();
+                    latestVersionController.dispose();
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text('Close'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final newCurrent = currentVersionController.text.trim();
+                    final newLatest = latestVersionController.text.trim();
+                    _customCurrentVersionNotifier.value = newCurrent;
+                    _customLatestVersionNotifier.value = newLatest;
+                    currentVersionController.dispose();
+                    latestVersionController.dispose();
+                    Navigator.pop(dialogContext);
+                    _showToast(context, 'Debug version overrides updated.');
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -2635,11 +2727,12 @@ class SettingsScreen extends StatelessWidget {
         return;
       }
 
-      final latestVersion = release['version'] as String;
+      final fetchedVersion = release['version'] as String;
+      final latestVersion = _customLatestVersionNotifier.value.isNotEmpty ? _customLatestVersionNotifier.value : fetchedVersion;
       final assetName = release['assetName'] as String? ?? 'Reyaansh-Chat-Android.apk';
       _latestVersionNotifier.value = latestVersion;
 
-      if (_isNewerVersion(latestVersion, _currentVersion)) {
+      if (_isNewerVersion(latestVersion, effectiveCurrentVersion)) {
         // New version available
         if (context.mounted) {
           _showUpdateDialog(context, latestVersion, release['downloadUrl'] as String, assetName);
@@ -2780,10 +2873,10 @@ class SettingsScreen extends StatelessWidget {
     );
 
     await _localNotificationsPlugin.show(
-      1001,
-      'Test Notification',
-      'This is a local test notification from Reyaansh Chat.',
-      notificationDetails,
+      id: 1001,
+      title: 'Test Notification',
+      body: 'This is a local test notification from Reyaansh Chat.',
+      notificationDetails: notificationDetails,
       payload: 'test_notification',
     );
 
@@ -2800,8 +2893,8 @@ class SettingsScreen extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Current Version: $_currentVersion'),
-              Text('Latest Version: $latestVersion'),
+              Text('Current Version: ${effectiveCurrentVersion}'),
+              Text('Latest Version: $latestVersion${_customLatestVersionNotifier.value.isNotEmpty ? ' (override)' : ''}'),
               const SizedBox(height: 12),
               const Text('A new version is available for download. Would you like to download and install it?'),
               const SizedBox(height: 8),
@@ -3315,7 +3408,7 @@ Future<void> _initializeFirebaseMessaging() async {
     final androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     final initSettings = InitializationSettings(android: androidInit);
     await _localNotificationsPlugin.initialize(
-      initSettings,
+      initializationSettings: initSettings,
       onDidReceiveNotificationResponse: (response) {
         // Handle local notification tap if desired.
       },
