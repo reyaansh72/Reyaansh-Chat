@@ -3408,7 +3408,7 @@ Future<void> _initializeFirebaseMessaging() async {
     final androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     final initSettings = InitializationSettings(android: androidInit);
     await _localNotificationsPlugin.initialize(
-      initSettings,
+      settings: initSettings,
       onDidReceiveNotificationResponse: (response) {
         // Handle local notification tap if desired.
       },
