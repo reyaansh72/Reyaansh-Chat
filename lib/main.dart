@@ -10,6 +10,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -309,7 +310,7 @@ class SettingsScreen extends StatelessWidget {
   // ==========================================
   // APP VERSION CONSTANTS
   // ==========================================
-  static const String _currentVersion = '1.10';
+  static const String _currentVersion = '1.11';
   static const String _gitHubRepo = 'reyaansh72/Reyaansh-Chat';
   static const String _gitHubApiUrl = 'https://api.github.com/repos/reyaansh72/Reyaansh-Chat/releases';
 
@@ -327,6 +328,8 @@ class SettingsScreen extends StatelessWidget {
   static final ValueNotifier<int> _developerTapCount = ValueNotifier<int>(0);
   static final ValueNotifier<String?> _latestVersionNotifier = ValueNotifier<String?>(null);
   static final ValueNotifier<bool> _checkingUpdateNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> _isDownloadingNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<double?> _downloadProgressNotifier = ValueNotifier<double?>(null);
   // Extended settings notifiers
   static final ValueNotifier<bool> _endToEndEncryptionNotifier = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> _messageBackupNotifier = ValueNotifier<bool>(true);
@@ -914,6 +917,12 @@ class SettingsScreen extends StatelessWidget {
               onChanged: (v) async => await EnterpriseSession.setNotificationsEnabled(v),
             ),
           ),
+          ListTile(
+            leading: const Icon(Icons.notifications_active),
+            title: const Text('Send Test Notification'),
+            subtitle: const Text('Verify local notifications are working'),
+            onTap: () => _showTestNotification(context),
+          ),
           const Divider(),
 
           _buildSectionHeader(context, 'Account'),
@@ -957,6 +966,46 @@ class SettingsScreen extends StatelessWidget {
             subtitle: const Text('Version & licenses'),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutScreen())),
           ),
+
+          if (!kIsWeb) ...[
+            const Divider(),
+            ValueListenableBuilder<bool>(
+              valueListenable: _checkingUpdateNotifier,
+              builder: (context, checking, _) {
+                return ValueListenableBuilder<double?>(
+                  valueListenable: _downloadProgressNotifier,
+                  builder: (context, progress, _) {
+                    return ListTile(
+                      leading: const Icon(Icons.system_update),
+                      title: const Text('Check for Update'),
+                      subtitle: () {
+                        if (checking) {
+                          return const Text('Checking for updates...');
+                        }
+                        if (progress != null) {
+                          final progressPercent = (progress * 100).clamp(0, 100).toStringAsFixed(0);
+                          return Text('Downloading update... $progressPercent%');
+                        }
+                        return ValueListenableBuilder<String?>(
+                          valueListenable: _latestVersionNotifier,
+                          builder: (context, latestVersion, _) {
+                            if (latestVersion == null || latestVersion.isEmpty) {
+                              return const Text('Tap to compare current version with GitHub release');
+                            }
+                            return Text('Latest version: $latestVersion');
+                          },
+                        );
+                      }(),
+                      trailing: checking || progress != null
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.chevron_right),
+                      onTap: checking ? null : () => _checkAndDownloadUpdate(context),
+                    );
+                  },
+                );
+              },
+            ),
+          ],
 
           const Divider(),
           ListTile(
@@ -2587,12 +2636,13 @@ class SettingsScreen extends StatelessWidget {
       }
 
       final latestVersion = release['version'] as String;
+      final assetName = release['assetName'] as String? ?? 'Reyaansh-Chat-Android.apk';
       _latestVersionNotifier.value = latestVersion;
 
       if (_isNewerVersion(latestVersion, _currentVersion)) {
         // New version available
         if (context.mounted) {
-          _showUpdateDialog(context, latestVersion, release['downloadUrl'] as String);
+          _showUpdateDialog(context, latestVersion, release['downloadUrl'] as String, assetName);
         }
       } else {
         // Already on latest version
@@ -2632,6 +2682,7 @@ class SettingsScreen extends StatelessWidget {
               return {
                 'version': tagName.replaceAll('v', ''),
                 'downloadUrl': asset['browser_download_url'] as String,
+                'assetName': assetName,
                 'releaseName': release['name'] as String? ?? tagName,
                 'releaseNotes': release['body'] as String? ?? 'No release notes available',
               };
@@ -2645,7 +2696,101 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
-  void _showUpdateDialog(BuildContext context, String latestVersion, String downloadUrl) {
+  Future<Directory?> _getDownloadDirectory() async {
+    try {
+      final directories = await getExternalStorageDirectories(type: StorageDirectory.downloads);
+      if (directories != null && directories.isNotEmpty) {
+        return directories.first;
+      }
+      return await getExternalStorageDirectory();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _downloadApkToDownloads(BuildContext context, String url, String assetName) async {
+    try {
+      _downloadProgressNotifier.value = 0.0;
+      _checkingUpdateNotifier.value = true;
+      _isDownloadingNotifier.value = true;
+      _showToast(context, 'Downloading update...');
+
+      final directory = await _getDownloadDirectory();
+      if (directory == null) {
+        _showToast(context, 'Unable to locate downloads folder on this device.');
+        return;
+      }
+
+      final safeName = assetName.isNotEmpty ? assetName : 'Reyaansh-Chat-Android.apk';
+      final outputFile = File('${directory.path}/$safeName');
+      await outputFile.parent.create(recursive: true);
+
+      final request = http.Request('GET', Uri.parse(url));
+      final response = await request.send();
+      if (response.statusCode != 200) {
+        _showToast(context, 'Download failed with status ${response.statusCode}');
+        return;
+      }
+
+      final contentLength = response.contentLength ?? 0;
+      var downloadedBytes = 0;
+      final sink = outputFile.openWrite();
+
+      await for (final chunk in response.stream) {
+        downloadedBytes += chunk.length;
+        sink.add(chunk);
+        if (contentLength > 0) {
+          _downloadProgressNotifier.value = downloadedBytes / contentLength;
+        }
+      }
+
+      await sink.close();
+      _showToast(context, 'Download complete: ${outputFile.path}');
+      await _openDownloadedApk(outputFile, context);
+    } catch (e) {
+      _showToast(context, 'Update download failed: $e');
+    } finally {
+      _downloadProgressNotifier.value = null;
+      _checkingUpdateNotifier.value = false;
+      _isDownloadingNotifier.value = false;
+    }
+  }
+
+  Future<void> _openDownloadedApk(File apkFile, BuildContext context) async {
+    final uri = Uri.file(apkFile.path);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      _showToast(context, 'Could not open downloaded APK. Install it manually from Downloads.');
+    }
+  }
+
+  Future<void> _showTestNotification(BuildContext context) async {
+    if (kIsWeb) {
+      _showToast(context, 'Local notification testing is not supported on Web.');
+      return;
+    }
+
+    final notificationDetails = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _chatNotificationChannel.id,
+        _chatNotificationChannel.name,
+        channelDescription: _chatNotificationChannel.description,
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+    );
+
+    await _localNotificationsPlugin.show(
+      1001,
+      'Test Notification',
+      'This is a local test notification from Reyaansh Chat.',
+      notificationDetails,
+      payload: 'test_notification',
+    );
+
+    _showToast(context, 'Test notification sent.');
+  }
+
+  void _showUpdateDialog(BuildContext context, String latestVersion, String downloadUrl, String assetName) {
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -2660,7 +2805,7 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: 12),
               const Text('A new version is available for download. Would you like to download and install it?'),
               const SizedBox(height: 8),
-              Text('Download URL: $downloadUrl', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              Text('APK will be saved to your Downloads folder.', style: const TextStyle(fontSize: 12, color: Colors.grey)),
             ],
           ),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -2674,13 +2819,7 @@ class SettingsScreen extends StatelessWidget {
               label: const Text('Download'),
               onPressed: () async {
                 Navigator.of(dialogContext).pop();
-                _showToast(context, 'Opening download link...');
-                final uri = Uri.parse(downloadUrl);
-                if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-                  if (context.mounted) {
-                    _showToast(context, 'Could not open download link');
-                  }
-                }
+                await _downloadApkToDownloads(context, downloadUrl, assetName);
               },
             ),
           ],
@@ -3172,6 +3311,17 @@ Future<void> _initializeFirebaseMessaging() async {
     return;
   }
 
+  if (!kIsWeb) {
+    final androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    final initSettings = InitializationSettings(android: androidInit);
+    await _localNotificationsPlugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (response) {
+        // Handle local notification tap if desired.
+      },
+    );
+  }
+
   // Subscribe to topics and listen for messages
   if (!kIsWeb && EnterpriseSession.notificationsEnabled) {
     try {
@@ -3210,6 +3360,10 @@ void main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await _initializeFirebaseMessaging();
 
+  if (EnterpriseSession.isLoggedIn()) {
+    await EnterpriseSession.publishProfileToFirebase();
+  }
+
   // 4. Mount and build the Material 3 app workspace tree
   runApp(const ReyaanshCoreApp());
 }
@@ -3217,6 +3371,45 @@ void main() async {
 // =========================================================================
 // 1. GLOBAL SESSION STATE (ONE-TIME LOGIN CONFIG WITH PERSISTENCE)
 // =========================================================================
+
+class ContactEntry {
+  final String userId;
+  final String name;
+  final String avatarUrl;
+  final String themeWallpaperUrl;
+  final int addedAt;
+
+  ContactEntry({
+    required this.userId,
+    required this.name,
+    required this.avatarUrl,
+    this.themeWallpaperUrl = '',
+    int? addedAt,
+  }) : addedAt = addedAt ?? DateTime.now().millisecondsSinceEpoch;
+
+  factory ContactEntry.fromJson(Map<String, dynamic> json) {
+    return ContactEntry(
+      userId: json['userId']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Unknown',
+      avatarUrl: json['avatarUrl']?.toString() ?? '',
+      themeWallpaperUrl: json['themeWallpaperUrl']?.toString() ?? '',
+      addedAt: json['addedAt'] is int
+          ? json['addedAt'] as int
+          : int.tryParse(json['addedAt']?.toString() ?? '') ??
+              DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'userId': userId,
+      'name': name,
+      'avatarUrl': avatarUrl,
+      'themeWallpaperUrl': themeWallpaperUrl,
+      'addedAt': addedAt,
+    };
+  }
+}
 
 class EnterpriseSession {
   static String userId = '';
@@ -3227,14 +3420,19 @@ class EnterpriseSession {
   static final ValueNotifier<Color> themeSeedColorNotifier =
       ValueNotifier<Color>(themeSeedColor);
   static String themeVariant = 'light'; // 'light' | 'dark' | 'amoled'
-  static final ValueNotifier<String> themeVariantNotifier = ValueNotifier<String>(themeVariant);
+  static final ValueNotifier<String> themeVariantNotifier =
+      ValueNotifier<String>(themeVariant);
   static bool notificationsEnabled = true;
-  static final ValueNotifier<bool> notificationsEnabledNotifier = ValueNotifier<bool>(notificationsEnabled);
+  static final ValueNotifier<bool> notificationsEnabledNotifier =
+      ValueNotifier<bool>(notificationsEnabled);
+  static final ValueNotifier<List<ContactEntry>> contactsNotifier =
+      ValueNotifier<List<ContactEntry>>(<ContactEntry>[]);
 
   // Initialize SharedPreferences
   static Future<void> initializePreferences() async {
     _prefs = await SharedPreferences.getInstance();
     _loadFromPreferences();
+    await _loadContactsFromPreferences();
   }
 
   static void _loadFromPreferences() {
@@ -3250,6 +3448,92 @@ class EnterpriseSession {
     notificationsEnabled = _prefs.getBool('notificationsEnabled') ?? true;
     notificationsEnabledNotifier.value = notificationsEnabled;
     themeSeedColorNotifier.value = themeSeedColor;
+  }
+
+  static Future<void> _loadContactsFromPreferences() async {
+    try {
+      final jsonString = _prefs.getString('savedContacts') ?? '[]';
+      final data = jsonDecode(jsonString) as List<dynamic>;
+      final loadedContacts = data
+          .map((entry) => ContactEntry.fromJson(
+              Map<String, dynamic>.from(entry as Map<dynamic, dynamic>)))
+          .toList();
+      contactsNotifier.value = loadedContacts;
+    } catch (_) {
+      contactsNotifier.value = <ContactEntry>[];
+    }
+  }
+
+  static Future<void> _saveContactsToPreferences() async {
+    final jsonString = jsonEncode(
+      contactsNotifier.value.map((contact) => contact.toJson()).toList(),
+    );
+    await _prefs.setString('savedContacts', jsonString);
+  }
+
+  static List<ContactEntry> get contacts => contactsNotifier.value;
+
+  static ContactEntry? getContact(String userId) {
+    try {
+      return contactsNotifier.value
+          .firstWhere((entry) => entry.userId == userId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static bool isKnownContact(String userId) {
+    return getContact(userId) != null;
+  }
+
+  static Future<void> addOrUpdateContact(ContactEntry contact) async {
+    final copied = List<ContactEntry>.from(contactsNotifier.value);
+    final index = copied.indexWhere((entry) => entry.userId == contact.userId);
+    if (index >= 0) {
+      copied[index] = contact;
+    } else {
+      copied.add(contact);
+    }
+    contactsNotifier.value = copied;
+    await _saveContactsToPreferences();
+  }
+
+  static Future<void> removeContact(String userId) async {
+    final copied = contactsNotifier.value
+        .where((entry) => entry.userId != userId)
+        .toList();
+    contactsNotifier.value = copied;
+    await _saveContactsToPreferences();
+  }
+
+  static Future<ContactEntry?> fetchRemoteProfileById(
+      String sharedUserId) async {
+    final snapshot = await FirebaseDatabase.instance
+        .ref('users/$sharedUserId')
+        .get();
+    if (!snapshot.exists || snapshot.value == null) {
+      return null;
+    }
+
+    final raw = snapshot.value as Map<dynamic, dynamic>;
+    final userData = raw.map((key, value) => MapEntry(key.toString(), value));
+    return ContactEntry(
+      userId: sharedUserId,
+      name: userData['username']?.toString() ?? 'Unknown',
+      avatarUrl: userData['avatarUrl']?.toString() ?? '',
+      themeWallpaperUrl: userData['themeWallpaperUrl']?.toString() ?? '',
+    );
+  }
+
+  static Future<void> publishProfileToFirebase() async {
+    if (userId.isEmpty) return;
+    final userRef = FirebaseDatabase.instance.ref('users/$userId');
+    await userRef.update({
+      'username': username,
+      'avatarUrl': avatarUrl,
+      'themeWallpaperUrl': '',
+      'updatedAt': ServerValue.timestamp,
+    });
   }
 
   static Color get themeSeed => themeSeedColorNotifier.value;
@@ -3288,6 +3572,7 @@ class EnterpriseSession {
     await _prefs.setString('userId', userId);
     await _prefs.setString('username', username);
     await _prefs.setString('avatarUrl', avatarUrl);
+    await publishProfileToFirebase();
   }
 
   static Future<void> initializeFromShared({
@@ -3302,6 +3587,7 @@ class EnterpriseSession {
     await _prefs.setString('userId', userId);
     await _prefs.setString('username', username);
     await _prefs.setString('avatarUrl', avatarUrl);
+    await publishProfileToFirebase();
   }
 
   static Future<void> logout() async {
@@ -4004,10 +4290,13 @@ class _ChatDashboardState extends State<ChatDashboard> {
   final ScrollController _scrollController = ScrollController();
   bool _isComposing = false;
   final Map<String, DateTime> _lastAutoReplySent = {};
+  final Map<String, bool> _contactTypingStatuses = {};
+  Timer? _typingActivityTimer;
 
   late final Stream<DatabaseEvent> _rtdbStream;
   late final Query _messagesQuery;
   late final StreamSubscription<DatabaseEvent> _childAddedSubscription;
+  late final StreamSubscription<DatabaseEvent> _typingSubscription;
   late final int _messageNotificationCutoff;
 
   @override
@@ -4023,16 +4312,26 @@ class _ChatDashboardState extends State<ChatDashboard> {
         .onChildAdded
         .listen(_handleMessageAdded);
 
+    _typingSubscription = FirebaseDatabase.instance
+        .ref('typing_status')
+        .onValue
+        .listen(_handleTypingStatusUpdate);
+
     _textController.addListener(() {
+      final composing = _textController.text.isNotEmpty;
       setState(() {
-        _isComposing = _textController.text.isNotEmpty;
+        _isComposing = composing;
       });
+      _updateTypingStatus(composing);
     });
   }
 
   @override
   void dispose() {
     _childAddedSubscription.cancel();
+    _typingSubscription.cancel();
+    _typingActivityTimer?.cancel();
+    _updateTypingStatus(false);
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -4046,6 +4345,49 @@ class _ChatDashboardState extends State<ChatDashboard> {
         curve: Curves.easeOut,
       );
     }
+  }
+
+  void _handleTypingStatusUpdate(DatabaseEvent event) {
+    final snapshot = event.snapshot;
+    if (!snapshot.exists || snapshot.value == null) {
+      setState(() {
+        _contactTypingStatuses.clear();
+      });
+      return;
+    }
+
+    final raw = snapshot.value as Map<dynamic, dynamic>;
+    final statuses = raw.map<String, bool>((key, value) {
+      return MapEntry(key.toString(), value == true);
+    });
+
+    setState(() {
+      _contactTypingStatuses
+          .removeWhere((key, _) => statuses[key] == false);
+      statuses.forEach((key, value) {
+        if (key != EnterpriseSession.userId) {
+          _contactTypingStatuses[key] = value;
+        }
+      });
+    });
+  }
+
+  void _updateTypingStatus(bool isTyping) {
+    if (EnterpriseSession.userId.isEmpty) return;
+    final typingRef = FirebaseDatabase.instance
+        .ref('typing_status/${EnterpriseSession.userId}');
+
+    if (isTyping) {
+      _typingActivityTimer?.cancel();
+      typingRef.set(true);
+      _typingActivityTimer = Timer(const Duration(seconds: 3), () {
+        typingRef.set(false);
+      });
+      return;
+    }
+
+    _typingActivityTimer?.cancel();
+    typingRef.set(false);
   }
 
   void _handleDispatch(String content, {String? mediaUrl}) {
@@ -4401,6 +4743,16 @@ class _ChatDashboardState extends State<ChatDashboard> {
           IconButton(
             onPressed: () {
               Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ContactsScreen()),
+              );
+            },
+            icon: const Icon(Icons.contacts),
+            color: colors.onPrimaryContainer,
+            tooltip: 'Contacts',
+          ),
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               );
             },
@@ -4508,17 +4860,54 @@ class _ChatDashboardState extends State<ChatDashboard> {
                           (_) => _scrollToBottom(),
                         );
 
-                        return ListView.builder(
-                          controller: _scrollController,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16.0,
-                            vertical: 12.0,
-                          ),
-                          itemCount: messages.length,
-                          itemBuilder: (context, index) {
-                            final payload = messages[index];
-                            return MultiMediaMessageEngine(payload: payload);
-                          },
+                        final typingContacts = EnterpriseSession.contacts
+                            .where((contact) => _contactTypingStatuses[contact.userId] == true)
+                            .toList();
+
+                        return Column(
+                          children: [
+                            if (typingContacts.isNotEmpty &&
+                                SettingsScreen._typingIndicatorsNotifier.value) ...[
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0,
+                                  vertical: 10.0,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: colors.primary.withOpacity(0.10),
+                                  borderRadius: BorderRadius.circular(16.0),
+                                ),
+                                margin: const EdgeInsets.symmetric(
+                                  horizontal: 16.0,
+                                  vertical: 8.0,
+                                ),
+                                child: Text(
+                                  typingContacts.length == 1
+                                      ? '${typingContacts.first.name} is typing...'
+                                      : '${typingContacts.map((c) => c.name).join(', ')} are typing...',
+                                  style: TextStyle(
+                                    color: colors.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            Expanded(
+                              child: ListView.builder(
+                                controller: _scrollController,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16.0,
+                                  vertical: 12.0,
+                                ),
+                                itemCount: messages.length,
+                                itemBuilder: (context, index) {
+                                  final payload = messages[index];
+                                  return MultiMediaMessageEngine(payload: payload);
+                                },
+                              ),
+                            ),
+                          ],
                         );
                       },
                     ),
@@ -4622,6 +5011,364 @@ class _ChatDashboardState extends State<ChatDashboard> {
               child: const Icon(Icons.send_rounded),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class ContactsScreen extends StatefulWidget {
+  const ContactsScreen({super.key});
+
+  @override
+  State<ContactsScreen> createState() => _ContactsScreenState();
+}
+
+class _ContactsScreenState extends State<ContactsScreen> {
+  final TextEditingController _userIdController = TextEditingController();
+  final TextEditingController _themeUrlController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _avatarController = TextEditingController();
+  bool _isLoading = false;
+  String? _errorText;
+  bool _remoteFound = false;
+
+  @override
+  void dispose() {
+    _userIdController.dispose();
+    _themeUrlController.dispose();
+    _nameController.dispose();
+    _avatarController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchProfile() async {
+    final userId = _userIdController.text.trim();
+    if (userId.isEmpty) {
+      setState(() {
+        _errorText = 'Enter a user ID to search.';
+        _remoteFound = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorText = null;
+      _remoteFound = false;
+    });
+
+    try {
+      final profile = await EnterpriseSession.fetchRemoteProfileById(userId);
+      if (profile == null) {
+        setState(() {
+          _errorText = 'No profile found for this user ID.';
+          _remoteFound = false;
+        });
+        return;
+      }
+
+      _nameController.text = profile.name;
+      _avatarController.text = profile.avatarUrl;
+      _themeUrlController.text = profile.themeWallpaperUrl;
+      setState(() {
+        _remoteFound = true;
+      });
+    } catch (e) {
+      setState(() {
+        _errorText = 'Could not fetch profile. Check your network or Firebase rules.';
+        _remoteFound = false;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveContact() async {
+    final userId = _userIdController.text.trim();
+    final name = _nameController.text.trim();
+    final avatar = _avatarController.text.trim();
+    final themeUrl = _themeUrlController.text.trim();
+
+    if (userId.isEmpty || name.isEmpty) {
+      setState(() {
+        _errorText = 'User ID and name are required.';
+      });
+      return;
+    }
+
+    final entry = ContactEntry(
+      userId: userId,
+      name: name,
+      avatarUrl: avatar,
+      themeWallpaperUrl: themeUrl,
+    );
+
+    await EnterpriseSession.addOrUpdateContact(entry);
+    if (!mounted) return;
+    setState(() {
+      _errorText = null;
+      _remoteFound = false;
+    });
+    Navigator.of(context).pop();
+  }
+
+  void _showAddContactDialog() {
+    _userIdController.clear();
+    _nameController.clear();
+    _avatarController.clear();
+    _themeUrlController.clear();
+    _errorText = null;
+    _remoteFound = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(builder: (dialogContext, setState) {
+          return AlertDialog(
+            title: const Text('Add contact by User ID'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: _userIdController,
+                    decoration: const InputDecoration(
+                      labelText: 'User ID',
+                      hintText: 'Enter contact user ID',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _isLoading ? null : () async {
+                      await _fetchProfile();
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.search),
+                    label: const Text('Fetch profile'),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_isLoading) const CircularProgressIndicator(),
+                  if (_errorText != null) ...[
+                    Text(_errorText!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    const SizedBox(height: 12),
+                  ],
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _avatarController,
+                    decoration: const InputDecoration(
+                      labelText: 'Avatar URL',
+                      hintText: 'https://...',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _themeUrlController,
+                    decoration: const InputDecoration(
+                      labelText: 'Contact Theme Image URL',
+                      hintText: 'Optional wallpaper URL',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_remoteFound && _avatarController.text.isNotEmpty) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        _avatarController.text,
+                        width: 96,
+                        height: 96,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          width: 96,
+                          height: 96,
+                          color: Theme.of(context).colorScheme.surfaceVariant,
+                          child: const Icon(Icons.person, size: 40),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: _saveContact,
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+  Future<void> _showEditContactDialog(ContactEntry contact) async {
+    _userIdController.text = contact.userId;
+    _nameController.text = contact.name;
+    _avatarController.text = contact.avatarUrl;
+    _themeUrlController.text = contact.themeWallpaperUrl;
+    _errorText = null;
+    _remoteFound = true;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(builder: (dialogContext, setState) {
+          return AlertDialog(
+            title: const Text('Edit contact'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: _userIdController,
+                    enabled: false,
+                    decoration: const InputDecoration(
+                      labelText: 'User ID',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _avatarController,
+                    decoration: const InputDecoration(
+                      labelText: 'Avatar URL',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _themeUrlController,
+                    decoration: const InputDecoration(
+                      labelText: 'Contact Theme Image URL',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  await EnterpriseSession.removeContact(contact.userId);
+                  if (mounted) Navigator.of(dialogContext).pop();
+                },
+                child: const Text('Remove', style: TextStyle(color: Colors.red)),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  await EnterpriseSession.addOrUpdateContact(ContactEntry(
+                    userId: contact.userId,
+                    name: _nameController.text.trim(),
+                    avatarUrl: _avatarController.text.trim(),
+                    themeWallpaperUrl: _themeUrlController.text.trim(),
+                  ));
+                  if (mounted) Navigator.of(dialogContext).pop();
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Contacts'),
+        backgroundColor: colors.primaryContainer,
+        foregroundColor: colors.onPrimaryContainer,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: ValueListenableBuilder<List<ContactEntry>>(
+          valueListenable: EnterpriseSession.contactsNotifier,
+          builder: (context, contacts, _) {
+            if (contacts.isEmpty) {
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.contacts, size: 72, color: colors.outline),
+                  const SizedBox(height: 16),
+                  Text('No contacts added yet.', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Text('Add a user by their User ID to save contacts and custom themes.', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    onPressed: _showAddContactDialog,
+                    child: const Text('Add first contact'),
+                  ),
+                ],
+              );
+            }
+
+            return Column(
+              children: [
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: contacts.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final contact = contacts[index];
+                      return Card(
+                        elevation: 1,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          leading: UserAvatarWidget(url: contact.avatarUrl, size: 48),
+                          title: Text(contact.name),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('ID: ${contact.userId}'),
+                              if (contact.themeWallpaperUrl.isNotEmpty)
+                                Text('Custom theme set', style: TextStyle(color: colors.primary)),
+                            ],
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.edit),
+                            onPressed: () => _showEditContactDialog(contact),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: _showAddContactDialog,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add contact'),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -4745,6 +5492,9 @@ class MultiMediaMessageEngine extends StatelessWidget {
     final ColorScheme colors = Theme.of(context).colorScheme;
     final bool isMe = payload.senderId == EnterpriseSession.userId;
 
+    final contact = EnterpriseSession.getContact(payload.senderId);
+    final contactThemeImage = contact?.themeWallpaperUrl;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
@@ -4796,12 +5546,28 @@ class MultiMediaMessageEngine extends StatelessWidget {
                           bottomRight: Radius.circular(isMe ? 4.0 : 16.0),
                         ),
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
+                      clipBehavior: contactThemeImage != null && contactThemeImage.isNotEmpty
+                          ? Clip.antiAlias
+                          : Clip.none,
+                      child: Container(
+                        decoration: contactThemeImage != null && contactThemeImage.isNotEmpty
+                            ? BoxDecoration(
+                                image: DecorationImage(
+                                  image: NetworkImage(contactThemeImage),
+                                  fit: BoxFit.cover,
+                                  colorFilter: ColorFilter.mode(
+                                    colors.surface.withOpacity(0.75),
+                                    BlendMode.dstATop,
+                                  ),
+                                ),
+                              )
+                            : null,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                             if (payload.attachmentUrl != null &&
                                 payload.attachmentUrl!.isNotEmpty) ...[
                               if (_looksLikeImageUrl(payload.attachmentUrl!))
