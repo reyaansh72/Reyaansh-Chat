@@ -355,7 +355,7 @@ class PluginManager {
   }
 
   static Future<void> importPluginFromFile() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: <String>['dart'],
       withData: true,
