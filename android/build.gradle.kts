@@ -26,11 +26,9 @@ tasks.register<Delete>("clean") {
 // Ensure all Android subprojects use a minimum compileSdk of 36 so
 // plugins compiled with older compileSdk (e.g., android-34) won't
 // fail AAR metadata checks when other plugins require 36+.
-import com.android.build.gradle.BaseExtension
-
 subprojects {
     afterEvaluate {
-        extensions.findByType(BaseExtension::class.java)?.apply {
+        extensions.findByType(com.android.build.gradle.BaseExtension::class.java)?.apply {
             compileSdkVersion(36)
         }
     }
