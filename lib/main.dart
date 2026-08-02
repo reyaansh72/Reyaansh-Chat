@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -15,9 +16,13 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
+import 'package:file_picker/file_picker.dart';
 // webview_flutter caused build issues on web; open YouTube links externally instead
 import 'firebase_options.dart';
 import 'package:flutter/rendering.dart';
+import 'plugin_system.dart';
+import 'slash_commands.dart';
+import 'background_audio.dart';
 
 const String kNotificationBackendUrl = String.fromEnvironment(
   'NOTIFICATION_BACKEND_URL',
@@ -49,14 +54,149 @@ class StoriesScreen extends StatefulWidget {
   State<StoriesScreen> createState() => _StoriesScreenState();
 }
 
+class AppLocalizations {
+  AppLocalizations(this.locale);
+
+  final Locale locale;
+
+  static AppLocalizations of(BuildContext context) {
+    return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
+  }
+
+  static const List<Locale> supportedLocales = <Locale>[
+    Locale('en', 'US'),
+    Locale('es', 'ES'),
+    Locale('fr', 'FR'),
+    Locale('de', 'DE'),
+    Locale('hi', 'IN'),
+  ];
+
+  static final Map<String, Map<String, String>> _values = <String, Map<String, String>>{
+    'en': <String, String>{
+      'about': 'About',
+      'settings': 'Settings',
+      'stories': 'Stories',
+      'contacts': 'Contacts',
+      'language': 'Language',
+      'language_region': 'Language & Region',
+      'select_language': 'Select Language',
+      'english': 'English (US)',
+      'spanish': 'Spanish (ES)',
+      'french': 'French (FR)',
+      'german': 'German (DE)',
+      'hindi': 'Hindi (HI)',
+      'language_set_to_english': 'Language set to English',
+      'language_changed_to_spanish': 'Language changed to Spanish',
+      'language_changed_to_french': 'Language changed to French',
+      'language_changed_to_german': 'Language changed to German',
+      'language_changed_to_hindi': 'Language changed to Hindi',
+    },
+    'es': <String, String>{
+      'about': 'Acerca de',
+      'settings': 'Configuración',
+      'stories': 'Historias',
+      'contacts': 'Contactos',
+      'language': 'Idioma',
+      'language_region': 'Idioma y región',
+      'select_language': 'Seleccionar idioma',
+      'english': 'Inglés (EE. UU.)',
+      'spanish': 'Español (ES)',
+      'french': 'Francés (FR)',
+      'german': 'Alemán (DE)',
+      'hindi': 'Hindi (HI)',
+      'language_set_to_english': 'Idioma establecido en inglés',
+      'language_changed_to_spanish': 'Idioma cambiado a español',
+      'language_changed_to_french': 'Idioma cambiado a francés',
+      'language_changed_to_german': 'Idioma cambiado a alemán',
+      'language_changed_to_hindi': 'Idioma cambiado a hindi',
+    },
+    'fr': <String, String>{
+      'about': 'À propos',
+      'settings': 'Paramètres',
+      'stories': 'Histoires',
+      'contacts': 'Contacts',
+      'language': 'Langue',
+      'language_region': 'Langue et région',
+      'select_language': 'Choisir la langue',
+      'english': 'Anglais (États-Unis)',
+      'spanish': 'Espagnol (ES)',
+      'french': 'Français (FR)',
+      'german': 'Allemand (DE)',
+      'hindi': 'Hindi (HI)',
+      'language_set_to_english': 'Langue définie sur anglais',
+      'language_changed_to_spanish': 'Langue changée en espagnol',
+      'language_changed_to_french': 'Langue changée en français',
+      'language_changed_to_german': 'Langue changée en allemand',
+      'language_changed_to_hindi': 'Langue changée en hindi',
+    },
+    'de': <String, String>{
+      'about': 'Info',
+      'settings': 'Einstellungen',
+      'stories': 'Stories',
+      'contacts': 'Kontakte',
+      'language': 'Sprache',
+      'language_region': 'Sprache und Region',
+      'select_language': 'Sprache auswählen',
+      'english': 'Englisch (USA)',
+      'spanish': 'Spanisch (ES)',
+      'french': 'Französisch (FR)',
+      'german': 'Deutsch (DE)',
+      'hindi': 'Hindi (HI)',
+      'language_set_to_english': 'Sprache auf Englisch gesetzt',
+      'language_changed_to_spanish': 'Sprache auf Spanisch geändert',
+      'language_changed_to_french': 'Sprache auf Französisch geändert',
+      'language_changed_to_german': 'Sprache auf Deutsch geändert',
+      'language_changed_to_hindi': 'Sprache auf Hindi geändert',
+    },
+    'hi': <String, String>{
+      'about': 'के बारे में',
+      'settings': 'सेटिंग्स',
+      'stories': 'कहानियाँ',
+      'contacts': 'संपर्क',
+      'language': 'भाषा',
+      'language_region': 'भाषा और क्षेत्र',
+      'select_language': 'भाषा चुनें',
+      'english': 'अंग्रेज़ी (यूएस)',
+      'spanish': 'स्पेनिश (ES)',
+      'french': 'फ़्रेंच (FR)',
+      'german': 'जर्मन (DE)',
+      'hindi': 'हिंदी (HI)',
+      'language_set_to_english': 'भाषा अंग्रेज़ी पर सेट की गई',
+      'language_changed_to_spanish': 'भाषा स्पेनिश में बदल दी गई',
+      'language_changed_to_french': 'भाषा फ़्रेंच में बदल दी गई',
+      'language_changed_to_german': 'भाषा जर्मन में बदल दी गई',
+      'language_changed_to_hindi': 'भाषा हिंदी में बदल दी गई',
+    },
+  };
+
+  String translate(String key) {
+    final languageCode = locale.languageCode;
+    return _values[languageCode]?[key] ?? _values['en']?[key] ?? key;
+  }
+}
+
+class AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
+  const AppLocalizationsDelegate();
+
+  @override
+  bool isSupported(Locale locale) => AppLocalizations.supportedLocales.any((supported) => supported.languageCode == locale.languageCode);
+
+  @override
+  Future<AppLocalizations> load(Locale locale) async => AppLocalizations(locale);
+
+  @override
+  bool shouldReload(covariant LocalizationsDelegate<AppLocalizations> old) => false;
+}
+
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final strings = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('About')),
+      appBar: AppBar(title: Text(strings.translate('about'))),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
@@ -307,10 +447,26 @@ class _StoriesScreenState extends State<StoriesScreen> {
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
+  static Locale localeFromLanguage(String language) {
+    switch (language) {
+      case 'Spanish (ES)':
+        return const Locale('es', 'ES');
+      case 'French (FR)':
+        return const Locale('fr', 'FR');
+      case 'German (DE)':
+        return const Locale('de', 'DE');
+      case 'Hindi (HI)':
+        return const Locale('hi', 'IN');
+      case 'English (US)':
+      default:
+        return const Locale('en', 'US');
+    }
+  }
+
   // ==========================================
   // APP VERSION CONSTANTS
   // ==========================================
-  static const String _currentVersion = '1.11';
+  static const String _currentVersion = '1.13';
   static const String _gitHubRepo = 'reyaansh72/Reyaansh-Chat';
   static const String _gitHubApiUrl = 'https://api.github.com/repos/reyaansh72/Reyaansh-Chat/releases';
 
@@ -349,6 +505,9 @@ class SettingsScreen extends StatelessWidget {
   static final ValueNotifier<bool> _autoBackupSettingsNotifier = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> _vpnEnabledNotifier = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> _analyticsEnabledNotifier = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> _backgroundMusicEnabledNotifier = ValueNotifier<bool>(false);
+  static final ValueNotifier<String> _backgroundMusicPathNotifier = ValueNotifier<String>('');
+  static final ValueNotifier<String> _backgroundMusicNameNotifier = ValueNotifier<String>('');
 
   // ==========================================
   // DAILY USE FEATURE NOTIFIERS
@@ -468,6 +627,9 @@ class SettingsScreen extends StatelessWidget {
     saveBool('autoBackupSettings', _autoBackupSettingsNotifier);
     saveBool('vpnEnabled', _vpnEnabledNotifier);
     saveBool('analyticsEnabled', _analyticsEnabledNotifier);
+    saveBool('backgroundMusicEnabled', _backgroundMusicEnabledNotifier);
+    saveString('backgroundMusicPath', _backgroundMusicPathNotifier);
+    saveString('backgroundMusicName', _backgroundMusicNameNotifier);
     saveString('customCurrentVersion', _customCurrentVersionNotifier);
     saveString('customLatestVersion', _customLatestVersionNotifier);
     saveString('proxyType', _proxyTypeNotifier);
@@ -539,6 +701,9 @@ class SettingsScreen extends StatelessWidget {
     _autoBackupSettingsNotifier.value = EnterpriseSession._prefs.getBool('autoBackupSettings') ?? true;
     _vpnEnabledNotifier.value = EnterpriseSession._prefs.getBool('vpnEnabled') ?? false;
     _analyticsEnabledNotifier.value = EnterpriseSession._prefs.getBool('analyticsEnabled') ?? true;
+    _backgroundMusicEnabledNotifier.value = EnterpriseSession._prefs.getBool('backgroundMusicEnabled') ?? false;
+    _backgroundMusicPathNotifier.value = EnterpriseSession._prefs.getString('backgroundMusicPath') ?? '';
+    _backgroundMusicNameNotifier.value = EnterpriseSession._prefs.getString('backgroundMusicName') ?? '';
     _customCurrentVersionNotifier.value = EnterpriseSession._prefs.getString('customCurrentVersion') ?? '';
     _customLatestVersionNotifier.value = EnterpriseSession._prefs.getString('customLatestVersion') ?? '';
     _proxyTypeNotifier.value = EnterpriseSession._prefs.getString('proxyType') ?? 'Direct';
@@ -640,6 +805,9 @@ class SettingsScreen extends StatelessWidget {
     await EnterpriseSession._prefs.setBool('autoBackupSettings', _autoBackupSettingsNotifier.value);
     await EnterpriseSession._prefs.setBool('vpnEnabled', _vpnEnabledNotifier.value);
     await EnterpriseSession._prefs.setBool('analyticsEnabled', _analyticsEnabledNotifier.value);
+    await EnterpriseSession._prefs.setBool('backgroundMusicEnabled', _backgroundMusicEnabledNotifier.value);
+    await EnterpriseSession._prefs.setString('backgroundMusicPath', _backgroundMusicPathNotifier.value);
+    await EnterpriseSession._prefs.setString('backgroundMusicName', _backgroundMusicNameNotifier.value);
     await EnterpriseSession._prefs.setString('proxyType', _proxyTypeNotifier.value);
     await EnterpriseSession._prefs.setString('proxyHost', _proxyHostNotifier.value);
     await EnterpriseSession._prefs.setString('proxyPort', _proxyPortNotifier.value);
@@ -718,6 +886,53 @@ class SettingsScreen extends StatelessWidget {
       'version': _currentVersion,
     };
     return jsonEncode(settings);
+  }
+
+  static String exportBackupToJson() {
+    final backup = {
+      'type': 'chat_backup_v1',
+      'timestamp': DateTime.now().toIso8601String(),
+      'version': _currentVersion,
+      'profile': {
+        'userId': EnterpriseSession.userId,
+        'username': EnterpriseSession.username,
+        'avatarUrl': EnterpriseSession.avatarUrl,
+      },
+      'contacts': EnterpriseSession.contacts.map((contact) => contact.toJson()).toList(),
+      'settings': jsonDecode(exportSettingsToJson()),
+    };
+    return const JsonEncoder.withIndent('  ').convert(backup);
+  }
+
+  static Future<bool> importBackupFromJson(String jsonString) async {
+    try {
+      final Map<String, dynamic> data = jsonDecode(jsonString) as Map<String, dynamic>;
+      if (data['type'] != 'chat_backup_v1') return false;
+
+      if (data.containsKey('settings')) {
+        final settingsPayload = jsonEncode(data['settings']);
+        await importSettingsFromJson(settingsPayload);
+      }
+
+      if (data.containsKey('contacts') && data['contacts'] is List) {
+        await EnterpriseSession.restoreContactsFromData(List<dynamic>.from(data['contacts'] as List<dynamic>));
+      }
+
+      if (data.containsKey('profile') && data['profile'] is Map<String, dynamic>) {
+        final profile = Map<String, dynamic>.from(data['profile'] as Map<dynamic, dynamic>);
+        if (EnterpriseSession.userId.isEmpty && profile['userId'] != null) {
+          EnterpriseSession.userId = profile['userId']?.toString() ?? '';
+          EnterpriseSession.username = profile['username']?.toString() ?? '';
+          EnterpriseSession.avatarUrl = profile['avatarUrl']?.toString() ?? '';
+          await EnterpriseSession._prefs.setString('userId', EnterpriseSession.userId);
+          await EnterpriseSession._prefs.setString('username', EnterpriseSession.username);
+          await EnterpriseSession._prefs.setString('avatarUrl', EnterpriseSession.avatarUrl);
+        }
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<bool> importSettingsFromJson(String jsonString) async {
@@ -805,6 +1020,9 @@ class SettingsScreen extends StatelessWidget {
     _autoBackupSettingsNotifier.value = true;
     _vpnEnabledNotifier.value = false;
     _analyticsEnabledNotifier.value = true;
+    _backgroundMusicEnabledNotifier.value = false;
+    _backgroundMusicPathNotifier.value = '';
+    _backgroundMusicNameNotifier.value = '';
     _proxyTypeNotifier.value = 'Direct';
     _proxyHostNotifier.value = '';
     _proxyPortNotifier.value = '';
@@ -854,8 +1072,9 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(strings.translate('settings'))),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
@@ -970,6 +1189,20 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => _showProfileDialog(context),
           ),
           const Divider(),
+          _buildSectionHeader(context, 'Backup & Restore'),
+          ListTile(
+            leading: const Icon(Icons.download_for_offline),
+            title: const Text('Export Backup'),
+            subtitle: const Text('Save contacts and app settings to a JSON file'),
+            onTap: () => _exportBackup(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.upload_file),
+            title: const Text('Import Backup'),
+            subtitle: const Text('Select a JSON file to restore contacts and settings'),
+            onTap: () => _restoreBackup(context),
+          ),
+          const Divider(),
 
           _buildSectionHeader(context, 'Content'),
           ListTile(
@@ -981,10 +1214,54 @@ class SettingsScreen extends StatelessWidget {
           ),
           const Divider(),
 
-          _buildSectionHeader(context, 'Language & Region'),
+          _buildSectionHeader(context, 'Audio'),
+          ValueListenableBuilder<bool>(
+            valueListenable: _backgroundMusicEnabledNotifier,
+            builder: (context, enabled, _) => SwitchListTile(
+              value: enabled,
+              title: const Text('Background Music'),
+              subtitle: const Text('Plays an MP3 in the background while you use the app'),
+              secondary: const Icon(Icons.audiotrack),
+              onChanged: (value) async {
+                _backgroundMusicEnabledNotifier.value = value;
+                await BackgroundAudioController.instance.setEnabled(value);
+              },
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.music_note),
+            title: const Text('Select MP3'),
+            subtitle: ValueListenableBuilder<String>(
+              valueListenable: _backgroundMusicNameNotifier,
+              builder: (context, name, _) => Text(name.isEmpty ? 'No file selected' : name),
+            ),
+            onTap: () async {
+              final picked = await BackgroundAudioController.instance.pickAndSetMusic();
+              if (picked != null && context.mounted) {
+                _backgroundMusicPathNotifier.value = picked;
+                _backgroundMusicNameNotifier.value = BackgroundAudioController.instance.selectedNameNotifier.value;
+                _showToast(context, 'Music selected');
+              }
+            },
+          ),
+          const Divider(),
+
+          _buildSectionHeader(context, 'Plugins'),
+          ListTile(
+            leading: const Icon(Icons.extension),
+            title: const Text('Plugin Studio'),
+            subtitle: const Text('Create, import, save, and publish plugins'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PluginStudioHomeScreen())),
+          ),
+          const SizedBox(height: 8),
+          PluginManager.buildPluginPagePreview(context, title: 'Plugin page preview'),
+          const Divider(),
+
+          _buildSectionHeader(context, AppLocalizations.of(context).translate('language_region')),
           ListTile(
             leading: const Icon(Icons.language),
-            title: const Text('Language'),
+            title: Text(AppLocalizations.of(context).translate('language')),
             subtitle: ValueListenableBuilder<String>(valueListenable: _languageNotifier, builder: (context, language, _) => Text(language)),
             onTap: () => _showLanguageDialog(context),
           ),
@@ -1271,7 +1548,7 @@ class SettingsScreen extends StatelessWidget {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Select Language'),
+          title: Text(AppLocalizations.of(context).translate('select_language')),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           content: SizedBox(
             width: double.maxFinite,
@@ -1280,43 +1557,43 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 ListTile(
                   leading: const Icon(Icons.check_circle, color: Colors.blue),
-                  title: const Text('English (US)'),
+                  title: Text(AppLocalizations.of(context).translate('english')),
                   onTap: () {
                     _languageNotifier.value = 'English (US)';
                     Navigator.of(dialogContext).pop();
-                    _showToast(context, 'Language set to English');
+                    _showToast(context, AppLocalizations.of(context).translate('language_set_to_english'));
                   },
                 ),
                 ListTile(
-                  title: const Text('Spanish (ES)'),
+                  title: Text(AppLocalizations.of(context).translate('spanish')),
                   onTap: () {
                     _languageNotifier.value = 'Spanish (ES)';
                     Navigator.of(dialogContext).pop();
-                    _showToast(context, 'Language changed to Spanish');
+                    _showToast(context, AppLocalizations.of(context).translate('language_changed_to_spanish'));
                   },
                 ),
                 ListTile(
-                  title: const Text('French (FR)'),
+                  title: Text(AppLocalizations.of(context).translate('french')),
                   onTap: () {
                     _languageNotifier.value = 'French (FR)';
                     Navigator.of(dialogContext).pop();
-                    _showToast(context, 'Language changed to French');
+                    _showToast(context, AppLocalizations.of(context).translate('language_changed_to_french'));
                   },
                 ),
                 ListTile(
-                  title: const Text('German (DE)'),
+                  title: Text(AppLocalizations.of(context).translate('german')),
                   onTap: () {
                     _languageNotifier.value = 'German (DE)';
                     Navigator.of(dialogContext).pop();
-                    _showToast(context, 'Language changed to German');
+                    _showToast(context, AppLocalizations.of(context).translate('language_changed_to_german'));
                   },
                 ),
                 ListTile(
-                  title: const Text('Hindi (HI)'),
+                  title: Text(AppLocalizations.of(context).translate('hindi')),
                   onTap: () {
                     _languageNotifier.value = 'Hindi (HI)';
                     Navigator.of(dialogContext).pop();
-                    _showToast(context, 'Language changed to Hindi');
+                    _showToast(context, AppLocalizations.of(context).translate('language_changed_to_hindi'));
                   },
                 ),
               ],
@@ -1331,6 +1608,62 @@ class SettingsScreen extends StatelessWidget {
     final jsonString = exportSettingsToJson();
     Clipboard.setData(ClipboardData(text: jsonString));
     _showToast(context, 'Settings exported to clipboard');
+  }
+
+  Future<void> _exportBackup(BuildContext context) async {
+    final jsonString = exportBackupToJson();
+    final defaultName = 'chat-backup-${DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-')}.json';
+
+    if (kIsWeb) {
+      Clipboard.setData(ClipboardData(text: jsonString));
+      _showToast(context, 'Backup JSON copied to clipboard');
+      return;
+    }
+
+    final filePath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save chat backup',
+      fileName: defaultName,
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+
+    if (filePath == null) {
+      _showToast(context, 'Backup cancelled');
+      return;
+    }
+
+    final backupFile = File(filePath);
+    await backupFile.writeAsString(jsonString);
+    _showToast(context, 'Backup saved to $filePath');
+  }
+
+  Future<void> _restoreBackup(BuildContext context) async {
+    if (kIsWeb) {
+      _showImportDialog(context);
+      return;
+    }
+
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+    );
+
+    if (result == null || result.files.isEmpty) {
+      _showToast(context, 'Restore cancelled');
+      return;
+    }
+
+    final pickedFile = result.files.first;
+    final path = pickedFile.path;
+    if (path == null) {
+      _showToast(context, 'Unable to read selected file');
+      return;
+    }
+
+    final file = File(path);
+    final jsonString = await file.readAsString();
+    final success = await importBackupFromJson(jsonString);
+    _showToast(context, success ? 'Backup restored successfully' : 'Unable to restore backup');
   }
 
   void _showRegionDialog(BuildContext context) {
@@ -2809,17 +3142,22 @@ class SettingsScreen extends StatelessWidget {
     }
   }
 
-  Future<Directory?> _getDownloadDirectory() async {
-    try {
-      final directories = await getExternalStorageDirectories(type: StorageDirectory.downloads);
-      if (directories != null && directories.isNotEmpty) {
-        return directories.first;
-      }
-      return await getExternalStorageDirectory();
-    } catch (_) {
-      return null;
+  Future<Directory?> getActualDownloadDirectory() async {
+  if (Platform.isAndroid) {
+    // 1. Direct path to Android's public Download folder
+    final publicDownloadDir = Directory('/storage/emulated/0/Download');
+    
+    if (await publicDownloadDir.exists()) {
+      return publicDownloadDir;
     }
+  } else if (Platform.isIOS) {
+    // On iOS, use the app's document directory
+    return await getApplicationDocumentsDirectory();
   }
+  
+  // Fallback to app-private directory if public folder doesn't exist
+  return await getDownloadsDirectory();
+}
 
   Future<void> _downloadApkToDownloads(BuildContext context, String url, String assetName) async {
     try {
@@ -2828,7 +3166,7 @@ class SettingsScreen extends StatelessWidget {
       _isDownloadingNotifier.value = true;
       _showToast(context, 'Downloading update...');
 
-      final directory = await _getDownloadDirectory();
+      final directory = await getActualDownloadDirectory();
       if (directory == null) {
         _showToast(context, 'Unable to locate downloads folder on this device.');
         return;
@@ -3469,6 +3807,8 @@ void main() async {
   await SettingsScreen.initializePreferences();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await PluginManager.initialize();
+  await BackgroundAudioController.instance.initialize();
   unawaited(_initializeFirebaseMessaging());
 
   if (EnterpriseSession.isLoggedIn()) {
@@ -3581,6 +3921,15 @@ class EnterpriseSession {
     await _prefs.setString('savedContacts', jsonString);
   }
 
+  static Future<void> restoreContactsFromData(List<dynamic> contactsData) async {
+    final restoredContacts = contactsData
+        .map((entry) => ContactEntry.fromJson(
+            Map<String, dynamic>.from(entry as Map<dynamic, dynamic>)))
+        .toList();
+    contactsNotifier.value = restoredContacts;
+    await _saveContactsToPreferences();
+  }
+
   static List<ContactEntry> get contacts => contactsNotifier.value;
 
   static ContactEntry? getContact(String userId) {
@@ -3638,12 +3987,16 @@ class EnterpriseSession {
   static Future<void> publishProfileToFirebase() async {
     if (userId.isEmpty) return;
     final userRef = FirebaseDatabase.instance.ref('users/$userId');
-    await userRef.update({
-      'username': username,
-      'avatarUrl': avatarUrl,
-      'themeWallpaperUrl': '',
-      'updatedAt': ServerValue.timestamp,
-    });
+    try {
+      await userRef.update({
+        'username': username,
+        'avatarUrl': avatarUrl,
+        'themeWallpaperUrl': '',
+        'updatedAt': ServerValue.timestamp,
+      });
+    } catch (error, stackTrace) {
+      debugPrint('Firebase publish failed: $error\n$stackTrace');
+    }
   }
 
   static Color get themeSeed => themeSeedColorNotifier.value;
@@ -4024,13 +4377,44 @@ class _ReyaanshCoreAppState extends State<ReyaanshCoreApp> {
             if (variant == 'dark') mode = ThemeMode.dark;
             if (variant == 'amoled') mode = ThemeMode.dark;
 
-            return MaterialApp(
-              title: 'Reyaansh Chat',
-              debugShowCheckedModeBanner: false,
-              theme: light,
-              darkTheme: variant == 'amoled' ? amoled : dark,
-              themeMode: mode,
-              home: child,
+            return ValueListenableBuilder<PluginDefinition?>(
+              valueListenable: PluginManager.activePluginNotifier,
+              builder: (context, activePlugin, _) {
+                final effectiveSeed = activePlugin?.seedColor ?? seedColor;
+                final effectiveAccent = activePlugin?.accentColor ?? Colors.cyan;
+                final effectiveLight = light.copyWith(
+                  colorScheme: light.colorScheme.copyWith(primary: effectiveSeed, secondary: effectiveAccent),
+                );
+                final effectiveDark = dark.copyWith(
+                  colorScheme: dark.colorScheme.copyWith(primary: effectiveSeed, secondary: effectiveAccent),
+                );
+                final effectiveAmoled = amoled.copyWith(
+                  colorScheme: amoled.colorScheme.copyWith(primary: effectiveSeed, secondary: effectiveAccent),
+                );
+
+                return ValueListenableBuilder<String>(
+                  valueListenable: SettingsScreen._languageNotifier,
+                  builder: (context, language, _) {
+                    final locale = SettingsScreen.localeFromLanguage(language);
+                    return MaterialApp(
+                      title: 'Reyaansh Chat',
+                      debugShowCheckedModeBanner: false,
+                      locale: locale,
+                      supportedLocales: AppLocalizations.supportedLocales,
+                      localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
+                        AppLocalizationsDelegate(),
+                        GlobalMaterialLocalizations.delegate,
+                        GlobalWidgetsLocalizations.delegate,
+                        GlobalCupertinoLocalizations.delegate,
+                      ],
+                      theme: effectiveLight,
+                      darkTheme: variant == 'amoled' ? effectiveAmoled : effectiveDark,
+                      themeMode: mode,
+                      home: child,
+                    );
+                  },
+                );
+              },
             );
           },
         );
@@ -4054,6 +4438,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _avatarUrlController = TextEditingController();
+  bool _isLoggingIn = false;
 
   @override
   void initState() {
@@ -4063,7 +4448,9 @@ class _LoginScreenState extends State<LoginScreen> {
     _avatarUrlController.text = EnterpriseSession.avatarUrl;
   }
 
-  void _performLogin() {
+  Future<void> _performLogin() async {
+    if (_isLoggingIn) return;
+
     final name = _usernameController.text.trim();
     final avatar = _avatarUrlController.text.trim();
 
@@ -4076,14 +4463,28 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    EnterpriseSession.initialize(name, avatar).then((_) {
+    setState(() => _isLoggingIn = true);
+
+    try {
+      await EnterpriseSession.initialize(name, avatar);
       if (mounted) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const ChatDashboard()),
         );
       }
-    });
+    } catch (error, stackTrace) {
+      debugPrint('Login failed: $error\n$stackTrace');
+      AlertBridge.showNotification(
+        context,
+        "Unable to join chat right now. Please try again.",
+        isFailureState: true,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoggingIn = false);
+      }
+    }
   }
 
   Future<void> _performLogout() async {
@@ -4245,21 +4646,27 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: double.infinity,
                       height: 50,
                       child: FilledButton(
-                        onPressed: _performLogin,
+                        onPressed: _isLoggingIn ? null : _performLogin,
                         style: FilledButton.styleFrom(
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12.0),
                           ),
                         ),
-                        child: Text(
-                          EnterpriseSession.isLoggedIn()
-                              ? 'Update Profile & Chat'
-                              : 'Join Chat',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        child: _isLoggingIn
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(
+                              EnterpriseSession.isLoggedIn()
+                                  ? 'Update Profile & Chat'
+                                  : 'Join Chat',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                       ),
                     ),
                     if (EnterpriseSession.isLoggedIn()) ...[
@@ -4500,81 +4907,40 @@ class _ChatDashboardState extends State<ChatDashboard> {
     typingRef.set(false);
   }
 
+  void _showSlashHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Chat commands'),
+        content: const Text('/shrug\n/tableflip\n/unflip\n/me <action>\n/roll [NdM]\n/joke\n/clear\n/help'),
+        actions: [TextButton(onPressed: () => Navigator.of(c).pop(), child: const Text('Close'))],
+      ),
+    );
+  }
+
   void _handleDispatch(String content, {String? mediaUrl}) {
     if (content.trim().isEmpty && mediaUrl == null) return;
 
-    // Handle slash commands locally
-    if (content.trim().startsWith('/')) {
-      final parts = content.trim().split(RegExp(r'\s+'));
-      final cmd = parts[0].toLowerCase();
-      final args = parts.length > 1 ? parts.sublist(1) : <String>[];
-
-      switch (cmd) {
-        case '/shrug':
-          content = '¯\\_(ツ)_/¯';
-          break;
-        case '/tableflip':
-          content = '(╯°□°）╯︵ ┻━┻';
-          break;
-        case '/unflip':
-          content = '┬─┬ ノ( ゜-゜ノ)';
-          break;
-        case '/me':
-          final action = args.join(' ');
-          if (action.isEmpty) {
-            // show help instead of sending
-            showDialog(
-              context: context,
-              builder: (c) => AlertDialog(title: const Text('Usage'), content: const Text('/me <action>'), actions: [TextButton(onPressed: () => Navigator.of(c).pop(), child: const Text('OK'))]),
-            );
-            return;
-          }
-          content = '*${EnterpriseSession.username} $action*';
-          break;
-        case '/roll':
-          final spec = args.isNotEmpty ? args[0] : '1d6';
-          final m = RegExp(r'(?:(\d+)d)?(\d+)').firstMatch(spec);
-          int times = 1;
-          int sides = 6;
-          if (m != null) {
-            if ((m.group(1) ?? '').isNotEmpty) times = int.tryParse(m.group(1)!) ?? 1;
-            sides = int.tryParse(m.group(2)!) ?? 6;
-          }
-          times = times.clamp(1, 100);
-          sides = sides.clamp(2, 1000);
-          final rnd = Random();
-          final rolls = List.generate(times, (_) => rnd.nextInt(sides) + 1);
-          final total = rolls.fold<int>(0, (a, b) => a + b);
-          content = '${EnterpriseSession.username} rolled $total (${rolls.join(', ')})';
-          break;
-        case '/joke':
-          final jokes = [
-            'Why did the developer go broke? Because he used up all his cache.',
-            'I told my computer I needed a break, and it said: "No problem — I’ll go to sleep."',
-            'There are only 10 types of people in the world: those who understand binary, and those who don’t.',
-          ];
-          content = jokes[Random().nextInt(jokes.length)];
-          break;
-        case '/help':
-          showDialog(
-            context: context,
-            builder: (c) => AlertDialog(
-              title: const Text('Commands'),
-              content: const Text('/shrug, /tableflip, /unflip, /me <action>, /roll [NdM], /joke'),
-              actions: [TextButton(onPressed: () => Navigator.of(c).pop(), child: const Text('Close'))],
-            ),
-          );
-          return;
-        default:
-          // unknown command; fallthrough and send as-is
-          break;
+    final commandResult = SlashCommandHelper.process(content, username: EnterpriseSession.username);
+    if (!commandResult.shouldSend) {
+      if (commandResult.shouldClearInput) {
+        _textController.clear();
+        return;
       }
+      if (commandResult.showHelp) {
+        _showSlashHelpDialog();
+        return;
+      }
+      return;
     }
+
+    final messageText = commandResult.message.trim();
+    if (messageText.isEmpty && mediaUrl == null) return;
 
     final reference = FirebaseDatabase.instance.ref('messages').push();
     final messageId = reference.key ?? '';
     reference.set({
-      'text': content.trim(),
+      'text': messageText,
       'mediaUrl': mediaUrl,
       'timestamp': ServerValue.timestamp,
       'senderId': EnterpriseSession.userId,
@@ -4585,7 +4951,7 @@ class _ChatDashboardState extends State<ChatDashboard> {
     _notifyNotificationService(
       senderId: EnterpriseSession.userId,
       senderName: EnterpriseSession.username,
-      text: content.trim(),
+      text: messageText,
       messageId: messageId,
     );
 
@@ -5011,13 +5377,39 @@ class _ContactChatScreenState extends State<ContactChatScreen> {
     }
   }
 
+  void _showSlashHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Chat commands'),
+        content: const Text('/shrug\n/tableflip\n/unflip\n/me <action>\n/roll [NdM]\n/joke\n/clear\n/help'),
+        actions: [TextButton(onPressed: () => Navigator.of(c).pop(), child: const Text('Close'))],
+      ),
+    );
+  }
+
   Future<void> _sendMessage() async {
     final content = _textController.text.trim();
     if (content.isEmpty) return;
 
+    final commandResult = SlashCommandHelper.process(content, username: EnterpriseSession.username);
+    if (!commandResult.shouldSend) {
+      if (commandResult.shouldClearInput) {
+        _textController.clear();
+        return;
+      }
+      if (commandResult.showHelp) {
+        _showSlashHelpDialog();
+        return;
+      }
+      return;
+    }
+
+    final processedContent = PluginManager.processMessageText(commandResult.message.trim());
+
     final reference = FirebaseDatabase.instance.ref('chatRooms/$_roomId').push();
     await reference.set({
-      'text': content,
+      'text': processedContent,
       'mediaUrl': null,
       'timestamp': ServerValue.timestamp,
       'senderId': EnterpriseSession.userId,
@@ -5032,6 +5424,7 @@ class _ContactChatScreenState extends State<ContactChatScreen> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final chatTheme = SettingsScreen._selectedChatThemeNotifier.value;
+    final pluginHints = PluginManager.buildChatUiHints();
     final scaffoldColor = chatTheme == 'Midnight'
         ? const Color(0xFF0F172A)
         : chatTheme == 'Mint'
@@ -5045,10 +5438,12 @@ class _ContactChatScreenState extends State<ContactChatScreen> {
             ? const Color(0xFFB9F6CA)
             : chatTheme == 'Rose'
                 ? const Color(0xFFF8BBD0)
-                : colors.primaryContainer;
+                : Color(int.parse((pluginHints['accentColor'] as String? ?? '#4f46e5').replaceFirst('#', 'FF'), radix: 16));
     final bubbleTextColor = chatTheme == 'Midnight'
         ? Colors.white
         : colors.onSurface;
+    final bubbleRadius = pluginHints['bubbleRadius'] as int? ?? 18;
+    final spacingMultiplier = (pluginHints['spacingMultiplier'] as double? ?? 1.0).toDouble();
 
     return Scaffold(
       backgroundColor: scaffoldColor,
@@ -5093,11 +5488,11 @@ class _ContactChatScreenState extends State<ContactChatScreen> {
                         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                         child: Container(
                           margin: const EdgeInsets.symmetric(vertical: 4),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          padding: EdgeInsets.symmetric(horizontal: 14 * spacingMultiplier, vertical: 10 * spacingMultiplier),
                           constraints: const BoxConstraints(maxWidth: 320),
                           decoration: BoxDecoration(
                             color: isMe ? bubbleColor : colors.surface,
-                            borderRadius: BorderRadius.circular(18),
+                            borderRadius: BorderRadius.circular(bubbleRadius.toDouble()),
                           ),
                           child: Text(
                             message.message,
@@ -5118,7 +5513,7 @@ class _ContactChatScreenState extends State<ContactChatScreen> {
                     controller: _textController,
                     style: TextStyle(fontSize: SettingsScreen._chatFontSizeNotifier.value),
                     decoration: InputDecoration(
-                      hintText: 'Type a message',
+                      hintText: 'Type a message or /help',
                       filled: true,
                       fillColor: colors.surfaceContainerHighest,
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
@@ -5156,6 +5551,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
   bool _isLoading = false;
   String? _errorText;
   bool _remoteFound = false;
+  List<ContactEntry> _firebaseUsers = <ContactEntry>[];
+  bool _isLoadingUsers = false;
 
   @override
   void dispose() {
@@ -5164,6 +5561,42 @@ class _ContactsScreenState extends State<ContactsScreen> {
     _nameController.dispose();
     _avatarController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadFirebaseUsers() async {
+    setState(() => _isLoadingUsers = true);
+    try {
+      final snapshot = await FirebaseDatabase.instance.ref('users').get();
+      if (!snapshot.exists || snapshot.value == null) {
+        setState(() => _firebaseUsers = <ContactEntry>[]);
+        return;
+      }
+
+      final data = snapshot.value as Map<dynamic, dynamic>;
+      final users = <ContactEntry>[];
+      data.forEach((key, value) {
+        if (value is Map) {
+          final map = Map<String, dynamic>.from(value as Map);
+          final userId = key.toString();
+          final name = map['username']?.toString() ?? 'Unknown';
+          final avatar = map['avatarUrl']?.toString() ?? '';
+          final wallpaper = map['themeWallpaperUrl']?.toString() ?? '';
+          if (userId.isNotEmpty && userId != EnterpriseSession.userId) {
+            users.add(ContactEntry(
+              userId: userId,
+              name: name,
+              avatarUrl: avatar,
+              themeWallpaperUrl: wallpaper,
+            ));
+          }
+        }
+      });
+      setState(() => _firebaseUsers = users);
+    } catch (_) {
+      setState(() => _firebaseUsers = <ContactEntry>[]);
+    } finally {
+      if (mounted) setState(() => _isLoadingUsers = false);
+    }
   }
 
   Future<void> _fetchProfile() async {
@@ -5248,6 +5681,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     _themeUrlController.clear();
     _errorText = null;
     _remoteFound = false;
+    _loadFirebaseUsers();
 
     showDialog(
       context: context,
@@ -5259,11 +5693,52 @@ class _ContactsScreenState extends State<ContactsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (_isLoadingUsers)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: CircularProgressIndicator(),
+                    )
+                  else if (_firebaseUsers.isNotEmpty) ...[
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Select a registered user', style: TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 180,
+                      child: ListView.separated(
+                        itemCount: _firebaseUsers.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final user = _firebaseUsers[index];
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: CircleAvatar(backgroundImage: user.avatarUrl.isNotEmpty ? NetworkImage(user.avatarUrl) : null, child: user.avatarUrl.isEmpty ? const Icon(Icons.person) : null),
+                            title: Text(user.name),
+                            subtitle: Text(user.userId),
+                            onTap: () {
+                              _userIdController.text = user.userId;
+                              _nameController.text = user.name;
+                              _avatarController.text = user.avatarUrl;
+                              _themeUrlController.text = user.themeWallpaperUrl;
+                              setState(() {
+                                _remoteFound = true;
+                                _errorText = null;
+                              });
+                              Navigator.of(dialogContext).pop();
+                              _showAddContactDialog();
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   TextField(
                     controller: _userIdController,
                     decoration: const InputDecoration(
                       labelText: 'User ID',
-                      hintText: 'Enter contact user ID',
+                      hintText: 'Select a user or enter manually',
                     ),
                   ),
                   const SizedBox(height: 12),
