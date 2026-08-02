@@ -31,6 +31,10 @@ jobs:
           channel: stable
           cache: true
 
+      - name: 🧰 Install Android SDK 36
+        run: |
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
       - name: 📦 Install dependencies
         run: flutter pub get
 
