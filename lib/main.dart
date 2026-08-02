@@ -5805,6 +5805,7 @@ class _ChatDashboardState extends State<ChatDashboard> {
     );
   }
 }
+}
 
 class GroupChatScreen extends StatefulWidget {
   final GroupChatEntry group;
