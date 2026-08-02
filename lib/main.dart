@@ -466,7 +466,7 @@ class SettingsScreen extends StatelessWidget {
   // ==========================================
   // APP VERSION CONSTANTS
   // ==========================================
-  static const String _currentVersion = '1.13';
+  static const String _currentVersion = '1.14';
   static const String _gitHubRepo = 'reyaansh72/Reyaansh-Chat';
   static const String _gitHubApiUrl = 'https://api.github.com/repos/reyaansh72/Reyaansh-Chat/releases';
 
@@ -3985,18 +3985,74 @@ class EnterpriseSession {
     );
   }
 
+  static Future<void> _persistSessionProfile() async {
+    final profile = {
+      'userId': userId,
+      'username': username,
+      'avatarUrl': avatarUrl,
+      'themeVariant': themeVariant,
+      'themeSeedColor': themeSeedColor.toARGB32(),
+      'updatedAt': DateTime.now().toIso8601String(),
+    };
+    await _prefs.setString('sessionProfile', jsonEncode(profile));
+  }
+
+  static Map<String, dynamic> _serializeMessagePayload(Map<String, dynamic> message) {
+    final copy = Map<String, dynamic>.from(message);
+    if (copy['timestamp'] is Map) {
+      copy['timestamp'] = DateTime.now().millisecondsSinceEpoch;
+    }
+    return copy;
+  }
+
+  static Future<void> savePendingChatMessage(String roomId, Map<String, dynamic> message) async {
+    final key = 'pendingMessages:$roomId';
+    final existing = _prefs.getString(key);
+    final decoded = existing == null || existing.isEmpty
+        ? <Map<String, dynamic>>[]
+        : (jsonDecode(existing) as List<dynamic>)
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList();
+    decoded.add(_serializeMessagePayload(message));
+    await _prefs.setString(key, jsonEncode(decoded));
+  }
+
+  static Future<List<Map<String, dynamic>>> loadPendingChatMessages(String roomId) async {
+    final key = 'pendingMessages:$roomId';
+    final existing = _prefs.getString(key);
+    if (existing == null || existing.isEmpty) {
+      return <Map<String, dynamic>>[];
+    }
+    return (jsonDecode(existing) as List<dynamic>)
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
+  static Future<void> clearPendingChatMessages(String roomId) async {
+    await _prefs.remove('pendingMessages:$roomId');
+  }
+
   static Future<void> publishProfileToFirebase() async {
     if (userId.isEmpty) return;
+    await _persistSessionProfile();
+
     final userRef = FirebaseDatabase.instance.ref('users/$userId');
+    final profilePayload = {
+      'userId': userId,
+      'username': username,
+      'avatarUrl': avatarUrl,
+      'themeWallpaperUrl': '',
+      'themeVariant': themeVariant,
+      'themeSeedColor': themeSeedColor.toARGB32(),
+      'updatedAt': ServerValue.timestamp,
+    };
+
     try {
-      await userRef.update({
-        'username': username,
-        'avatarUrl': avatarUrl,
-        'themeWallpaperUrl': '',
-        'updatedAt': ServerValue.timestamp,
-      });
+      await userRef.set(profilePayload);
+      await _prefs.setString('profileSyncStatus', 'synced');
     } catch (error, stackTrace) {
       debugPrint('Firebase publish failed: $error\n$stackTrace');
+      await _prefs.setString('profileSyncStatus', 'pending');
     }
   }
 
@@ -4468,7 +4524,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       await EnterpriseSession.initialize(name, avatar);
+      await EnterpriseSession.publishProfileToFirebase();
       if (mounted) {
+        AlertBridge.showNotification(context, 'Profile saved and ready to chat.');
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const ChatDashboard()),
@@ -4810,6 +4868,8 @@ class _ChatDashboardState extends State<ChatDashboard> {
   final Map<String, DateTime> _lastAutoReplySent = {};
   final Map<String, bool> _contactTypingStatuses = {};
   Timer? _typingActivityTimer;
+  List<GroupChatEntry> _groups = <GroupChatEntry>[];
+  StreamSubscription<DatabaseEvent>? _groupsSubscription;
 
   late final Stream<DatabaseEvent> _rtdbStream;
   late final Query _messagesQuery;
@@ -4835,6 +4895,25 @@ class _ChatDashboardState extends State<ChatDashboard> {
         .onValue
         .listen(_handleTypingStatusUpdate);
 
+    _groupsSubscription = FirebaseDatabase.instance
+        .ref('groups')
+        .onValue
+        .listen((event) {
+          final result = <GroupChatEntry>[];
+          for (final child in event.snapshot.children) {
+            final data = child.value as Map<dynamic, dynamic>?;
+            if (data == null) continue;
+            final group = GroupChatEntry.fromRtdb(child.key ?? '', data);
+            if (group.memberIds.contains(EnterpriseSession.userId) || group.createdBy == EnterpriseSession.userId) {
+              result.add(group);
+            }
+          }
+          result.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+          if (mounted) {
+            setState(() => _groups = result);
+          }
+        });
+
     _textController.addListener(() {
       final composing = _textController.text.isNotEmpty;
       setState(() {
@@ -4846,6 +4925,7 @@ class _ChatDashboardState extends State<ChatDashboard> {
 
   @override
   void dispose() {
+    _groupsSubscription?.cancel();
     _childAddedSubscription.cancel();
     _typingSubscription.cancel();
     _typingActivityTimer?.cancel();
@@ -5204,6 +5284,12 @@ class _ChatDashboardState extends State<ChatDashboard> {
         elevation: 1,
         actions: [
           IconButton(
+            onPressed: _showCreateGroupDialog,
+            icon: const Icon(Icons.group_add_rounded),
+            color: colors.onPrimaryContainer,
+            tooltip: 'Create group',
+          ),
+          IconButton(
             onPressed: () {
               _showPasteUrlDialog();
             },
@@ -5257,41 +5343,83 @@ class _ChatDashboardState extends State<ChatDashboard> {
       body: ValueListenableBuilder<List<ContactEntry>>(
         valueListenable: EnterpriseSession.contactsNotifier,
         builder: (context, contacts, _) {
-          if (contacts.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.contacts_rounded, size: 72, color: colors.outline),
-                    const WidgetSpacer(height: 16),
-                    Text('No contacts yet', style: Theme.of(context).textTheme.titleMedium),
-                    const WidgetSpacer(height: 8),
-                    Text('Add a contact and start a private conversation.', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
-                    const WidgetSpacer(height: 20),
-                    FilledButton.icon(
-                      onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactsScreen())),
-                      icon: const Icon(Icons.person_add_alt_1),
-                      label: const Text('Add contact'),
-                    ),
-                  ],
+          final children = <Widget>[];
+
+          children.add(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 4, 4, 8),
+              child: Text('Groups', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            ),
+          );
+
+          if (_groups.isEmpty) {
+            children.add(
+              Card(
+                child: ListTile(
+                  title: const Text('Create a personal group'),
+                  subtitle: const Text('Invite your contacts into a shared space.'),
+                  trailing: FilledButton.tonal(
+                    onPressed: _showCreateGroupDialog,
+                    child: const Text('New group'),
+                  ),
                 ),
               ),
             );
+          } else {
+            for (final group in _groups) {
+              children.add(
+                Card(
+                  child: ListTile(
+                    leading: const CircleAvatar(child: Icon(Icons.group_rounded)),
+                    title: Text(group.name),
+                    subtitle: Text('${group.memberIds.length} members'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => GroupChatScreen(group: group)),
+                      );
+                    },
+                  ),
+                ),
+              );
+            }
           }
 
-          return RefreshIndicator(
-            onRefresh: () async => setState(() {}),
-            child: ListView.separated(
-              padding: const EdgeInsets.all(16.0),
-              itemCount: contacts.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final contact = contacts[index];
-                return Card(
-                  elevation: 1,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          children.add(const SizedBox(height: 12));
+          children.add(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+              child: Text('Contacts', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            ),
+          );
+
+          if (contacts.isEmpty) {
+            children.add(
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      Icon(Icons.contacts_rounded, size: 56, color: colors.outline),
+                      const SizedBox(height: 8),
+                      Text('No contacts yet', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 4),
+                      Text('Add a contact and start a private conversation.', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactsScreen())),
+                        icon: const Icon(Icons.person_add_alt_1),
+                        label: const Text('Add contact'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          } else {
+            for (final contact in contacts) {
+              children.add(
+                Card(
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     leading: UserAvatarWidget(url: contact.avatarUrl, size: 48),
@@ -5304,8 +5432,16 @@ class _ChatDashboardState extends State<ChatDashboard> {
                       );
                     },
                   ),
-                );
-              },
+                ),
+              );
+            }
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async => setState(() {}),
+            child: ListView(
+              padding: const EdgeInsets.all(16.0),
+              children: children,
             ),
           );
         },
@@ -5314,6 +5450,269 @@ class _ChatDashboardState extends State<ChatDashboard> {
         onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactsScreen())),
         icon: const Icon(Icons.person_add_alt_1),
         label: const Text('Add contact'),
+      ),
+    );
+  }
+}
+
+class GroupChatScreen extends StatefulWidget {
+  final GroupChatEntry group;
+
+  const GroupChatScreen({super.key, required this.group});
+
+  @override
+  State<GroupChatScreen> createState() => _GroupChatScreenState();
+}
+
+class _GroupChatScreenState extends State<GroupChatScreen> {
+  final TextEditingController _textController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  List<ChatPayload> _messages = <ChatPayload>[];
+  StreamSubscription<DatabaseEvent>? _messageSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _messageSubscription = FirebaseDatabase.instance
+        .ref('groupMessages/${widget.group.id}')
+        .onValue
+        .listen((event) {
+          final messages = event.snapshot.children
+              .map((child) => ChatPayload.fromRtdb(child))
+              .toList();
+          messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          if (!mounted) return;
+          setState(() => _messages = messages);
+          Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
+        });
+  }
+
+  @override
+  void dispose() {
+    _messageSubscription?.cancel();
+    _textController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    final content = _textController.text.trim();
+    if (content.isEmpty) return;
+
+    final processedContent = PluginManager.processMessageText(content);
+    final reference = FirebaseDatabase.instance.ref('groupMessages/${widget.group.id}').push();
+    await reference.set({
+      'text': processedContent,
+      'mediaUrl': null,
+      'timestamp': ServerValue.timestamp,
+      'senderId': EnterpriseSession.userId,
+      'senderName': EnterpriseSession.username,
+      'senderAvatarUrl': EnterpriseSession.avatarUrl,
+    });
+    _textController.clear();
+    Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
+  }
+
+  Future<void> _showInviteMembersDialog() async {
+    final selected = <String>{};
+    final contacts = EnterpriseSession.contacts.where((contact) => !widget.group.memberIds.contains(contact.userId)).toList();
+
+    if (contacts.isEmpty) {
+      if (mounted) {
+        AlertBridge.showNotification(context, 'No contacts available to invite right now.');
+      }
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Invite members'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: contacts.map((contact) {
+                    return CheckboxListTile(
+                      value: selected.contains(contact.userId),
+                      title: Text(contact.name),
+                      subtitle: Text(contact.userId),
+                      onChanged: (value) {
+                        setState(() {
+                          if (value == true) {
+                            selected.add(contact.userId);
+                          } else {
+                            selected.remove(contact.userId);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
+                FilledButton(
+                  onPressed: () async {
+                    Navigator.of(dialogContext).pop();
+                    final inviteIds = selected.toList();
+                    if (inviteIds.isEmpty) return;
+                    final groupRef = FirebaseDatabase.instance.ref('groups/${widget.group.id}/memberIds');
+                    final updates = <String, dynamic>{};
+                    for (final inviteId in inviteIds) {
+                      updates[inviteId] = true;
+                      await FirebaseDatabase.instance.ref('groupMembers/${widget.group.id}/$inviteId').set({
+                        'role': 'member',
+                        'joinedAt': ServerValue.timestamp,
+                      });
+                    }
+                    await groupRef.update(updates);
+                    if (mounted) {
+                      AlertBridge.showNotification(context, 'Invites sent to your selected contacts.');
+                    }
+                  },
+                  child: const Text('Invite'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.group.name),
+        actions: [
+          IconButton(
+            onPressed: _showInviteMembersDialog,
+            icon: const Icon(Icons.person_add_alt_1),
+            tooltip: 'Invite members',
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: _messages.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.group_rounded, size: 60, color: colors.outline),
+                        const SizedBox(height: 12),
+                        Text('Start chatting in ${widget.group.name}', style: Theme.of(context).textTheme.titleMedium),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final message = _messages[index];
+                      final isMe = message.senderId == EnterpriseSession.userId;
+                      return Align(
+                        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          constraints: const BoxConstraints(maxWidth: 320),
+                          decoration: BoxDecoration(
+                            color: isMe ? colors.primaryContainer : colors.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            message.message,
+                            style: TextStyle(color: isMe ? colors.onPrimaryContainer : colors.onSurface, fontSize: SettingsScreen._chatFontSizeNotifier.value),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            color: colors.surface,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _textController,
+                    decoration: InputDecoration(
+                      hintText: 'Type a message',
+                      filled: true,
+                      fillColor: colors.surfaceContainerHighest,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                    onSubmitted: (_) => _sendMessage(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FloatingActionButton.small(
+                  onPressed: _sendMessage,
+                  child: const Icon(Icons.send_rounded),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class GroupChatEntry {
+  final String id;
+  final String name;
+  final String createdBy;
+  final List<String> memberIds;
+  final DateTime createdAt;
+
+  const GroupChatEntry({
+    required this.id,
+    required this.name,
+    required this.createdBy,
+    required this.memberIds,
+    required this.createdAt,
+  });
+
+  factory GroupChatEntry.fromRtdb(String id, Map<dynamic, dynamic> data) {
+    final rawMembers = data['memberIds'];
+    final memberIds = <String>[];
+    if (rawMembers is Map) {
+      rawMembers.forEach((key, value) {
+        if (value == true) {
+          memberIds.add(key.toString());
+        }
+      });
+    }
+    return GroupChatEntry(
+      id: id,
+      name: data['name']?.toString() ?? 'Group',
+      createdBy: data['createdBy']?.toString() ?? '',
+      memberIds: memberIds,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+        (data['createdAt'] is int ? data['createdAt'] as int : 0),
       ),
     );
   }
@@ -5353,6 +5752,23 @@ class _ContactChatScreenState extends State<ContactChatScreen> {
           });
           Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
         });
+    unawaited(_flushPendingMessages());
+  }
+
+  Future<void> _flushPendingMessages() async {
+    final pending = await EnterpriseSession.loadPendingChatMessages(_roomId);
+    if (pending.isEmpty) return;
+
+    final roomRef = FirebaseDatabase.instance.ref('chatRooms/$_roomId');
+    for (final payload in pending) {
+      try {
+        await roomRef.push().set(payload);
+      } catch (_) {
+        return;
+      }
+    }
+
+    await EnterpriseSession.clearPendingChatMessages(_roomId);
   }
 
   @override
@@ -5407,18 +5823,41 @@ class _ContactChatScreenState extends State<ContactChatScreen> {
     }
 
     final processedContent = PluginManager.processMessageText(commandResult.message.trim());
-
-    final reference = FirebaseDatabase.instance.ref('chatRooms/$_roomId').push();
-    await reference.set({
+    final payload = {
       'text': processedContent,
       'mediaUrl': null,
       'timestamp': ServerValue.timestamp,
       'senderId': EnterpriseSession.userId,
       'senderName': EnterpriseSession.username,
       'senderAvatarUrl': EnterpriseSession.avatarUrl,
-    });
-    _textController.clear();
-    Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
+    };
+
+    try {
+      final reference = FirebaseDatabase.instance.ref('chatRooms/$_roomId').push();
+      await reference.set(payload);
+      _textController.clear();
+      if (mounted) {
+        Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
+      }
+    } catch (error) {
+      debugPrint('Chat send failed: $error');
+      await EnterpriseSession.savePendingChatMessage(_roomId, payload);
+      if (mounted) {
+        setState(() {
+          _messages.add(
+            ChatPayload(
+              id: 'local_${DateTime.now().millisecondsSinceEpoch}',
+              message: processedContent,
+              timestamp: DateTime.now(),
+              senderId: EnterpriseSession.userId,
+              senderName: EnterpriseSession.username,
+              senderAvatarUrl: EnterpriseSession.avatarUrl,
+            ),
+          );
+        });
+        AlertBridge.showNotification(context, 'Message saved locally and will sync when the connection is available.');
+      }
+    }
   }
 
   @override

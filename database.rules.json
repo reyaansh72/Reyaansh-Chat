@@ -1,0 +1,15 @@
+{
+  "rules": {
+    ".read": true,
+    ".write": true,
+    "messages": {
+      ".indexOn": ["timestamp"]
+    },
+    "chatRooms": {
+      ".indexOn": ["timestamp"]
+    },
+    "users": {
+      ".indexOn": ["updatedAt"]
+    }
+  }
+}
