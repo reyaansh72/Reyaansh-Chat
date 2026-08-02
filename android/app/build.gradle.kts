@@ -9,7 +9,8 @@ plugins {
 
 android {
     namespace = "com.example.chat"
-    compileSdk = flutter.compileSdkVersion
+    // Use a minimum compileSdk of 36 to satisfy newer plugin requirements
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
