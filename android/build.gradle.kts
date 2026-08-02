@@ -27,9 +27,19 @@ tasks.register<Delete>("clean") {
 // plugins compiled with older compileSdk (e.g., android-34) won't
 // fail AAR metadata checks when other plugins require 36+.
 subprojects {
-    afterEvaluate {
-        extensions.findByType(com.android.build.gradle.BaseExtension::class.java)?.apply {
-            compileSdkVersion(36)
-        }
+    // Configure Android projects when their plugin is applied. Using
+    // `plugins.withId` avoids calling `afterEvaluate` on projects that
+    // have already been evaluated and prevents the "already evaluated"
+    // exception on CI.
+    plugins.withId("com.android.application") {
+        extensions.findByName("android")
+            ?.let { it as? com.android.build.gradle.BaseExtension }
+            ?.apply { compileSdkVersion(36) }
+    }
+
+    plugins.withId("com.android.library") {
+        extensions.findByName("android")
+            ?.let { it as? com.android.build.gradle.BaseExtension }
+            ?.apply { compileSdkVersion(36) }
     }
 }
