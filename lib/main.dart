@@ -23,6 +23,7 @@ import 'package:flutter/rendering.dart';
 import 'plugin_system.dart';
 import 'slash_commands.dart';
 import 'background_audio.dart';
+import 'backend_service.dart';
 
 const String kNotificationBackendUrl = String.fromEnvironment(
   'NOTIFICATION_BACKEND_URL',
@@ -40,7 +41,9 @@ final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  final firebaseOptions = DefaultFirebaseOptions.currentPlatform;
+  debugPrint('Firebase background init database URL: ${firebaseOptions.databaseURL ?? 'null'}');
+  await Firebase.initializeApp(options: firebaseOptions);
   await _showLocalNotification(message);
 }
 
@@ -508,6 +511,12 @@ class SettingsScreen extends StatelessWidget {
   static final ValueNotifier<bool> _backgroundMusicEnabledNotifier = ValueNotifier<bool>(false);
   static final ValueNotifier<String> _backgroundMusicPathNotifier = ValueNotifier<String>('');
   static final ValueNotifier<String> _backgroundMusicNameNotifier = ValueNotifier<String>('');
+  static final ValueNotifier<String> _backendModeNotifier = ValueNotifier<String>('firebase');
+  static final ValueNotifier<String> _backendBaseUrlNotifier = ValueNotifier<String>('http://127.0.0.1:3000');
+  static final ValueNotifier<String> _backendConfigNameNotifier = ValueNotifier<String>('');
+  static final ValueNotifier<String> _backendConfigPathNotifier = ValueNotifier<String>('');
+  static final ValueNotifier<double> _backendTransitionProgressNotifier = ValueNotifier<double>(0.0);
+  static final ValueNotifier<bool> _backendSwitchingNotifier = ValueNotifier<bool>(false);
 
   // ==========================================
   // DAILY USE FEATURE NOTIFIERS
@@ -630,6 +639,10 @@ class SettingsScreen extends StatelessWidget {
     saveBool('backgroundMusicEnabled', _backgroundMusicEnabledNotifier);
     saveString('backgroundMusicPath', _backgroundMusicPathNotifier);
     saveString('backgroundMusicName', _backgroundMusicNameNotifier);
+    saveString('backendMode', _backendModeNotifier);
+    saveString('backendBaseUrl', _backendBaseUrlNotifier);
+    saveString('backendConfigName', _backendConfigNameNotifier);
+    saveString('backendConfigPath', _backendConfigPathNotifier);
     saveString('customCurrentVersion', _customCurrentVersionNotifier);
     saveString('customLatestVersion', _customLatestVersionNotifier);
     saveString('proxyType', _proxyTypeNotifier);
@@ -704,6 +717,10 @@ class SettingsScreen extends StatelessWidget {
     _backgroundMusicEnabledNotifier.value = EnterpriseSession._prefs.getBool('backgroundMusicEnabled') ?? false;
     _backgroundMusicPathNotifier.value = EnterpriseSession._prefs.getString('backgroundMusicPath') ?? '';
     _backgroundMusicNameNotifier.value = EnterpriseSession._prefs.getString('backgroundMusicName') ?? '';
+    _backendModeNotifier.value = EnterpriseSession._prefs.getString('backendMode') ?? 'firebase';
+    _backendBaseUrlNotifier.value = EnterpriseSession._prefs.getString('backendBaseUrl') ?? 'http://127.0.0.1:3000';
+    _backendConfigNameNotifier.value = EnterpriseSession._prefs.getString('backendConfigName') ?? '';
+    _backendConfigPathNotifier.value = EnterpriseSession._prefs.getString('backendConfigPath') ?? '';
     _customCurrentVersionNotifier.value = EnterpriseSession._prefs.getString('customCurrentVersion') ?? '';
     _customLatestVersionNotifier.value = EnterpriseSession._prefs.getString('customLatestVersion') ?? '';
     _proxyTypeNotifier.value = EnterpriseSession._prefs.getString('proxyType') ?? 'Direct';
@@ -808,6 +825,8 @@ class SettingsScreen extends StatelessWidget {
     await EnterpriseSession._prefs.setBool('backgroundMusicEnabled', _backgroundMusicEnabledNotifier.value);
     await EnterpriseSession._prefs.setString('backgroundMusicPath', _backgroundMusicPathNotifier.value);
     await EnterpriseSession._prefs.setString('backgroundMusicName', _backgroundMusicNameNotifier.value);
+    await EnterpriseSession._prefs.setString('backendMode', _backendModeNotifier.value);
+    await EnterpriseSession._prefs.setString('backendBaseUrl', _backendBaseUrlNotifier.value);
     await EnterpriseSession._prefs.setString('proxyType', _proxyTypeNotifier.value);
     await EnterpriseSession._prefs.setString('proxyHost', _proxyHostNotifier.value);
     await EnterpriseSession._prefs.setString('proxyPort', _proxyPortNotifier.value);
@@ -855,6 +874,8 @@ class SettingsScreen extends StatelessWidget {
   static String exportSettingsToJson() {
     final settings = {
       'theme': EnterpriseSession.currentThemeVariant,
+      'backendMode': _backendModeNotifier.value,
+      'backendBaseUrl': _backendBaseUrlNotifier.value,
       'themeSeed': EnterpriseSession.themeSeed.toARGB32(),
       'notifications': EnterpriseSession.notificationsEnabled,
       'language': _languageNotifier.value,
@@ -1023,6 +1044,10 @@ class SettingsScreen extends StatelessWidget {
     _backgroundMusicEnabledNotifier.value = false;
     _backgroundMusicPathNotifier.value = '';
     _backgroundMusicNameNotifier.value = '';
+    _backendModeNotifier.value = 'firebase';
+    _backendBaseUrlNotifier.value = 'http://127.0.0.1:3000';
+    _backendConfigNameNotifier.value = '';
+    _backendConfigPathNotifier.value = '';
     _proxyTypeNotifier.value = 'Direct';
     _proxyHostNotifier.value = '';
     _proxyPortNotifier.value = '';
@@ -1068,6 +1093,81 @@ class SettingsScreen extends StatelessWidget {
     _regionNotifier.value = 'United States';
 
     _settingsLoading = false;
+  }
+
+  static Future<void> _switchBackend(BuildContext context, String targetMode) async {
+    final previousMode = _backendModeNotifier.value;
+
+    _backendSwitchingNotifier.value = true;
+    _backendTransitionProgressNotifier.value = 0.0;
+
+    try {
+      if (targetMode == 'local') {
+        final reachable = await BackendService.instance.testConnection(baseUrl: _backendBaseUrlNotifier.value);
+        if (!reachable) {
+          throw Exception('The local server did not respond. Start the Node.js server on your PC and try again.');
+        }
+      }
+
+      await BackendService.instance.setBackend(mode: targetMode, baseUrl: _backendBaseUrlNotifier.value);
+      _backendModeNotifier.value = targetMode;
+      _backendTransitionProgressNotifier.value = 1.0;
+      if (context.mounted) {
+        _showToast(context, targetMode == 'local' ? 'Switched to local webserver' : 'Switched to Firebase');
+      }
+    } catch (error) {
+      _backendModeNotifier.value = previousMode;
+      if (context.mounted) {
+        _showToast(context, error.toString());
+      }
+    } finally {
+      for (var step = 1; step <= 10; step++) {
+        _backendTransitionProgressNotifier.value = step / 10;
+        await Future.delayed(const Duration(milliseconds: 80));
+      }
+      _backendSwitchingNotifier.value = false;
+      _backendTransitionProgressNotifier.value = 0.0;
+    }
+  }
+
+  static Future<void> _pickBackendConfig(BuildContext context) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: <String>['json', 'txt'],
+        withData: false,
+        allowMultiple: false,
+      );
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final file = result.files.first;
+      if (file.path == null || file.path!.isEmpty) {
+        throw Exception('The selected file does not expose a local path.');
+      }
+
+      final content = await File(file.path!).readAsString();
+      final decoded = jsonDecode(content);
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception('The backend config file must contain a JSON object.');
+      }
+
+      final baseUrl = (decoded['baseUrl'] ?? '').toString().trim();
+      final mode = (decoded['mode'] ?? 'local').toString().trim().toLowerCase();
+      if (baseUrl.isEmpty) {
+        throw Exception('The config file must include a baseUrl field.');
+      }
+
+      _backendBaseUrlNotifier.value = baseUrl;
+      _backendConfigNameNotifier.value = file.name;
+      _backendConfigPathNotifier.value = file.path!;
+      await _switchBackend(context, mode == 'firebase' ? 'firebase' : 'local');
+    } catch (error) {
+      if (context.mounted) {
+        _showToast(context, 'Could not read backend config: $error');
+      }
+    }
   }
 
   @override
@@ -1132,6 +1232,107 @@ class SettingsScreen extends StatelessWidget {
                   onSelected: (_) => _selectedChatThemeNotifier.value = theme,
                 );
               }).toList(),
+            ),
+          ),
+          const Divider(),
+
+          _buildSectionHeader(context, 'Backend Sync'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.cloud_sync_outlined),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Sync backend',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Choose Firebase for the cloud route or a local Node.js server for offline-friendly syncing. The app will switch smoothly with a progress transition.'),
+                  const SizedBox(height: 12),
+                  ValueListenableBuilder<String>(
+                    valueListenable: _backendModeNotifier,
+                    builder: (context, mode, _) {
+                      return SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(value: 'firebase', label: Text('Firebase')),
+                          ButtonSegment(value: 'local', label: Text('Local Node.js')),
+                        ],
+                        selected: {mode},
+                        onSelectionChanged: (selection) async {
+                          await _switchBackend(context, selection.first);
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  ValueListenableBuilder<String>(
+                    valueListenable: _backendConfigNameNotifier,
+                    builder: (context, configName, _) {
+                      return ValueListenableBuilder<String>(
+                        valueListenable: _backendBaseUrlNotifier,
+                        builder: (context, baseUrl, _) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: const Icon(Icons.folder_open_rounded),
+                                title: Text(configName.isEmpty ? 'No backend config selected' : configName),
+                                subtitle: Text(baseUrl.isEmpty ? 'Pick a JSON config file from your PC or phone.' : baseUrl),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  FilledButton.icon(
+                                    onPressed: () => _pickBackendConfig(context),
+                                    icon: const Icon(Icons.file_open_rounded),
+                                    label: const Text('Pick server config'),
+                                  ),
+                                  OutlinedButton(
+                                    onPressed: () => _switchBackend(context, 'firebase'),
+                                    child: const Text('Use Firebase'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _backendSwitchingNotifier,
+                    builder: (context, switching, _) {
+                      if (!switching) return const SizedBox.shrink();
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Switching backend...'),
+                          const SizedBox(height: 8),
+                          ValueListenableBuilder<double>(
+                            valueListenable: _backendTransitionProgressNotifier,
+                            builder: (context, progress, _) => LinearProgressIndicator(value: progress == 0 ? null : progress),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Tip: run the Node.js server on your PC and select a JSON config file such as Nodejs/local-backend-config.json so the app can switch to the local route instantly.'),
+                ],
+              ),
             ),
           ),
           const Divider(),
@@ -3804,10 +4005,13 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   AppInitializer.setupHardwareAcceleration();
 
+  await BackendService.instance.initialize();
   await EnterpriseSession.initializePreferences();
   await SettingsScreen.initializePreferences();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  final firebaseOptions = DefaultFirebaseOptions.currentPlatform;
+  debugPrint('Firebase startup database URL: ${firebaseOptions.databaseURL ?? 'null'}');
+  await Firebase.initializeApp(options: firebaseOptions);
   await PluginManager.initialize();
   await BackgroundAudioController.instance.initialize();
   unawaited(_initializeFirebaseMessaging());
@@ -3968,15 +4172,11 @@ class EnterpriseSession {
 
   static Future<ContactEntry?> fetchRemoteProfileById(
       String sharedUserId) async {
-    final snapshot = await FirebaseDatabase.instance
-        .ref('users/$sharedUserId')
-        .get();
-    if (!snapshot.exists || snapshot.value == null) {
+    final userData = await BackendService.instance.fetchProfile(sharedUserId);
+    if (userData == null) {
       return null;
     }
 
-    final raw = snapshot.value as Map<dynamic, dynamic>;
-    final userData = raw.map((key, value) => MapEntry(key.toString(), value));
     return ContactEntry(
       userId: sharedUserId,
       name: userData['username']?.toString() ?? 'Unknown',
@@ -4036,7 +4236,6 @@ class EnterpriseSession {
     if (userId.isEmpty) return;
     await _persistSessionProfile();
 
-    final userRef = FirebaseDatabase.instance.ref('users/$userId');
     final profilePayload = {
       'userId': userId,
       'username': username,
@@ -4048,10 +4247,10 @@ class EnterpriseSession {
     };
 
     try {
-      await userRef.set(profilePayload);
+      await BackendService.instance.persistProfile(userId, profilePayload);
       await _prefs.setString('profileSyncStatus', 'synced');
     } catch (error, stackTrace) {
-      debugPrint('Firebase publish failed: $error\n$stackTrace');
+      debugPrint('Backend publish failed: $error\n$stackTrace');
       await _prefs.setString('profileSyncStatus', 'pending');
     }
   }
@@ -4870,6 +5069,7 @@ class _ChatDashboardState extends State<ChatDashboard> {
   Timer? _typingActivityTimer;
   List<GroupChatEntry> _groups = <GroupChatEntry>[];
   StreamSubscription<DatabaseEvent>? _groupsSubscription;
+  Timer? _pollTimer;
 
   late final Stream<DatabaseEvent> _rtdbStream;
   late final Query _messagesQuery;
@@ -4881,38 +5081,43 @@ class _ChatDashboardState extends State<ChatDashboard> {
   void initState() {
     super.initState();
     _messageNotificationCutoff = DateTime.now().millisecondsSinceEpoch;
-    _messagesQuery = FirebaseDatabase.instance
-        .ref('messages')
-        .orderByChild('timestamp');
-    _rtdbStream = _messagesQuery.onValue;
-    _childAddedSubscription = FirebaseDatabase.instance
-        .ref('messages')
-        .onChildAdded
-        .listen(_handleMessageAdded);
+    if (BackendService.instance.isLocal) {
+      _loadGroupsFromBackend();
+      _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _loadGroupsFromBackend());
+    } else {
+      _messagesQuery = FirebaseDatabase.instance
+          .ref('messages')
+          .orderByChild('timestamp');
+      _rtdbStream = _messagesQuery.onValue;
+      _childAddedSubscription = FirebaseDatabase.instance
+          .ref('messages')
+          .onChildAdded
+          .listen(_handleMessageAdded);
 
-    _typingSubscription = FirebaseDatabase.instance
-        .ref('typing_status')
-        .onValue
-        .listen(_handleTypingStatusUpdate);
+      _typingSubscription = FirebaseDatabase.instance
+          .ref('typing_status')
+          .onValue
+          .listen(_handleTypingStatusUpdate);
 
-    _groupsSubscription = FirebaseDatabase.instance
-        .ref('groups')
-        .onValue
-        .listen((event) {
-          final result = <GroupChatEntry>[];
-          for (final child in event.snapshot.children) {
-            final data = child.value as Map<dynamic, dynamic>?;
-            if (data == null) continue;
-            final group = GroupChatEntry.fromRtdb(child.key ?? '', data);
-            if (group.memberIds.contains(EnterpriseSession.userId) || group.createdBy == EnterpriseSession.userId) {
-              result.add(group);
+      _groupsSubscription = FirebaseDatabase.instance
+          .ref('groups')
+          .onValue
+          .listen((event) {
+            final result = <GroupChatEntry>[];
+            for (final child in event.snapshot.children) {
+              final data = child.value as Map<dynamic, dynamic>?;
+              if (data == null) continue;
+              final group = GroupChatEntry.fromRtdb(child.key ?? '', data);
+              if (group.memberIds.contains(EnterpriseSession.userId) || group.createdBy == EnterpriseSession.userId) {
+                result.add(group);
+              }
             }
-          }
-          result.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-          if (mounted) {
-            setState(() => _groups = result);
-          }
-        });
+            result.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+            if (mounted) {
+              setState(() => _groups = result);
+            }
+          });
+    }
 
     _textController.addListener(() {
       final composing = _textController.text.isNotEmpty;
@@ -4929,6 +5134,7 @@ class _ChatDashboardState extends State<ChatDashboard> {
     _childAddedSubscription.cancel();
     _typingSubscription.cancel();
     _typingActivityTimer?.cancel();
+    _pollTimer?.cancel();
     _updateTypingStatus(false);
     _textController.dispose();
     _scrollController.dispose();
@@ -4943,6 +5149,41 @@ class _ChatDashboardState extends State<ChatDashboard> {
         curve: Curves.easeOut,
       );
     }
+  }
+
+  Future<void> _loadGroupsFromBackend() async {
+    try {
+      final items = await BackendService.instance.readCollectionItems('groups');
+      final result = <GroupChatEntry>[];
+      for (final item in items) {
+        final id = item['id']?.toString() ?? item['groupId']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        final memberIds = <String>[];
+        final rawMembers = item['memberIds'];
+        if (rawMembers is List) {
+          memberIds.addAll(rawMembers.whereType<String>());
+        } else if (rawMembers is Iterable) {
+          memberIds.addAll(rawMembers.whereType<String>());
+        }
+        final createdAt = item['createdAt'] is int
+            ? DateTime.fromMillisecondsSinceEpoch(item['createdAt'] as int)
+            : DateTime.now();
+        final group = GroupChatEntry(
+          id: id,
+          name: item['name']?.toString() ?? 'Group',
+          createdBy: item['createdBy']?.toString() ?? '',
+          memberIds: memberIds,
+          createdAt: createdAt,
+        );
+        if (group.memberIds.contains(EnterpriseSession.userId) || group.createdBy == EnterpriseSession.userId) {
+          result.add(group);
+        }
+      }
+      result.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      if (mounted) {
+        setState(() => _groups = result);
+      }
+    } catch (_) {}
   }
 
   void _handleTypingStatusUpdate(DatabaseEvent event) {
@@ -4971,7 +5212,7 @@ class _ChatDashboardState extends State<ChatDashboard> {
   }
 
   void _updateTypingStatus(bool isTyping) {
-    if (EnterpriseSession.userId.isEmpty) return;
+    if (BackendService.instance.isLocal || EnterpriseSession.userId.isEmpty) return;
     final typingRef = FirebaseDatabase.instance
         .ref('typing_status/${EnterpriseSession.userId}');
 
@@ -5018,27 +5259,45 @@ class _ChatDashboardState extends State<ChatDashboard> {
     final messageText = commandResult.message.trim();
     if (messageText.isEmpty && mediaUrl == null) return;
 
-    final reference = FirebaseDatabase.instance.ref('messages').push();
-    final messageId = reference.key ?? '';
-    reference.set({
-      'text': messageText,
-      'mediaUrl': mediaUrl,
-      'timestamp': ServerValue.timestamp,
-      'senderId': EnterpriseSession.userId,
-      'senderName': EnterpriseSession.username,
-      'senderAvatarUrl': EnterpriseSession.avatarUrl,
-    });
+    if (BackendService.instance.isLocal) {
+      unawaited(BackendService.instance.appendCollectionItem('messages', {
+        'text': messageText,
+        'mediaUrl': mediaUrl,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'senderId': EnterpriseSession.userId,
+        'senderName': EnterpriseSession.username,
+        'senderAvatarUrl': EnterpriseSession.avatarUrl,
+      }));
+    } else {
+      final reference = FirebaseDatabase.instance.ref('messages').push();
+      final messageId = reference.key ?? '';
+      reference.set({
+        'text': messageText,
+        'mediaUrl': mediaUrl,
+        'timestamp': ServerValue.timestamp,
+        'senderId': EnterpriseSession.userId,
+        'senderName': EnterpriseSession.username,
+        'senderAvatarUrl': EnterpriseSession.avatarUrl,
+      });
 
-    _notifyNotificationService(
-      senderId: EnterpriseSession.userId,
-      senderName: EnterpriseSession.username,
-      text: messageText,
-      messageId: messageId,
-    );
+      _notifyNotificationService(
+        senderId: EnterpriseSession.userId,
+        senderName: EnterpriseSession.username,
+        text: messageText,
+        messageId: messageId,
+      );
+    }
 
     _textController.clear();
     Future.delayed(const Duration(milliseconds: 200), _scrollToBottom);
   }
+
+  Future<void> _notifyNotificationService({
+    required String senderId,
+    required String senderName,
+    required String text,
+    required String messageId,
+  }) async {
 
   Future<void> _notifyNotificationService({
     required String senderId,
@@ -5305,21 +5564,37 @@ class _ChatDashboardState extends State<ChatDashboard> {
 
     if (shouldCreate != true) return;
 
-    final groupId = FirebaseDatabase.instance.ref('groups').push().key;
-    if (groupId == null) return;
-
     final groupName = nameController.text.trim();
-    final groupRef = FirebaseDatabase.instance.ref('groups/$groupId');
-    await groupRef.set({
-      'name': groupName,
-      'createdBy': EnterpriseSession.userId,
-      'createdAt': ServerValue.timestamp,
-      'memberIds': {EnterpriseSession.userId: true},
-    });
-    await FirebaseDatabase.instance.ref('groupMembers/$groupId/${EnterpriseSession.userId}').set({
-      'role': 'admin',
-      'joinedAt': ServerValue.timestamp,
-    });
+    final groupId = BackendService.instance.isLocal
+        ? 'group_${DateTime.now().millisecondsSinceEpoch}'
+        : FirebaseDatabase.instance.ref('groups').push().key;
+    if (groupId == null || groupId.isEmpty) return;
+
+    if (BackendService.instance.isLocal) {
+      await BackendService.instance.appendCollectionItem('groups', {
+        'id': groupId,
+        'name': groupName,
+        'createdBy': EnterpriseSession.userId,
+        'createdAt': DateTime.now().millisecondsSinceEpoch,
+        'memberIds': [EnterpriseSession.userId],
+      });
+      await BackendService.instance.setValue('groupMembers/$groupId/${EnterpriseSession.userId}', {
+        'role': 'admin',
+        'joinedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+    } else {
+      final groupRef = FirebaseDatabase.instance.ref('groups/$groupId');
+      await groupRef.set({
+        'name': groupName,
+        'createdBy': EnterpriseSession.userId,
+        'createdAt': ServerValue.timestamp,
+        'memberIds': {EnterpriseSession.userId: true},
+      });
+      await FirebaseDatabase.instance.ref('groupMembers/$groupId/${EnterpriseSession.userId}').set({
+        'role': 'admin',
+        'joinedAt': ServerValue.timestamp,
+      });
+    }
 
     if (!mounted) return;
     nameController.dispose();
@@ -5545,27 +5820,34 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   final ScrollController _scrollController = ScrollController();
   List<ChatPayload> _messages = <ChatPayload>[];
   StreamSubscription<DatabaseEvent>? _messageSubscription;
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
-    _messageSubscription = FirebaseDatabase.instance
-        .ref('groupMessages/${widget.group.id}')
-        .onValue
-        .listen((event) {
-          final messages = event.snapshot.children
-              .map((child) => ChatPayload.fromRtdb(child))
-              .toList();
-          messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-          if (!mounted) return;
-          setState(() => _messages = messages);
-          Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
-        });
+    if (BackendService.instance.isLocal) {
+      _loadMessagesFromBackend();
+      _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _loadMessagesFromBackend());
+    } else {
+      _messageSubscription = FirebaseDatabase.instance
+          .ref('groupMessages/${widget.group.id}')
+          .onValue
+          .listen((event) {
+            final messages = event.snapshot.children
+                .map((child) => ChatPayload.fromRtdb(child))
+                .toList();
+            messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+            if (!mounted) return;
+            setState(() => _messages = messages);
+            Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
+          });
+    }
   }
 
   @override
   void dispose() {
     _messageSubscription?.cancel();
+    _pollTimer?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -5581,20 +5863,54 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
+  Future<void> _loadMessagesFromBackend() async {
+    try {
+      final items = await BackendService.instance.readCollectionItems('groupMessages/${widget.group.id}');
+      final messages = items
+          .map((item) => ChatPayload(
+                id: item['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                message: item['text']?.toString() ?? '',
+                timestamp: item['timestamp'] is int
+                    ? DateTime.fromMillisecondsSinceEpoch(item['timestamp'] as int)
+                    : DateTime.now(),
+                senderId: item['senderId']?.toString() ?? '',
+                senderName: item['senderName']?.toString() ?? '',
+                senderAvatarUrl: item['senderAvatarUrl']?.toString() ?? '',
+              ))
+          .toList();
+      messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      if (mounted) {
+        setState(() => _messages = messages);
+        Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _sendMessage() async {
     final content = _textController.text.trim();
     if (content.isEmpty) return;
 
     final processedContent = PluginManager.processMessageText(content);
-    final reference = FirebaseDatabase.instance.ref('groupMessages/${widget.group.id}').push();
-    await reference.set({
-      'text': processedContent,
-      'mediaUrl': null,
-      'timestamp': ServerValue.timestamp,
-      'senderId': EnterpriseSession.userId,
-      'senderName': EnterpriseSession.username,
-      'senderAvatarUrl': EnterpriseSession.avatarUrl,
-    });
+    if (BackendService.instance.isLocal) {
+      await BackendService.instance.appendCollectionItem('groupMessages/${widget.group.id}', {
+        'text': processedContent,
+        'mediaUrl': null,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'senderId': EnterpriseSession.userId,
+        'senderName': EnterpriseSession.username,
+        'senderAvatarUrl': EnterpriseSession.avatarUrl,
+      });
+    } else {
+      final reference = FirebaseDatabase.instance.ref('groupMessages/${widget.group.id}').push();
+      await reference.set({
+        'text': processedContent,
+        'mediaUrl': null,
+        'timestamp': ServerValue.timestamp,
+        'senderId': EnterpriseSession.userId,
+        'senderName': EnterpriseSession.username,
+        'senderAvatarUrl': EnterpriseSession.avatarUrl,
+      });
+    }
     _textController.clear();
     Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
   }
@@ -5809,26 +6125,55 @@ class _ContactChatScreenState extends State<ContactChatScreen> {
   List<ChatPayload> _messages = <ChatPayload>[];
   late final String _roomId;
   StreamSubscription<DatabaseEvent>? _messageSubscription;
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     _roomId = _buildRoomId(EnterpriseSession.userId, widget.contact.userId);
-    _messageSubscription = FirebaseDatabase.instance
-        .ref('chatRooms/$_roomId')
-        .onValue
-        .listen((event) {
-          final messages = event.snapshot.children
-              .map((child) => ChatPayload.fromRtdb(child))
-              .toList();
-          messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-          if (!mounted) return;
-          setState(() {
-            _messages = messages;
+    if (BackendService.instance.isLocal) {
+      _loadMessagesFromBackend();
+      _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _loadMessagesFromBackend());
+    } else {
+      _messageSubscription = FirebaseDatabase.instance
+          .ref('chatRooms/$_roomId')
+          .onValue
+          .listen((event) {
+            final messages = event.snapshot.children
+                .map((child) => ChatPayload.fromRtdb(child))
+                .toList();
+            messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+            if (!mounted) return;
+            setState(() {
+              _messages = messages;
+            });
+            Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
           });
-          Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
-        });
+    }
     unawaited(_flushPendingMessages());
+  }
+
+  Future<void> _loadMessagesFromBackend() async {
+    try {
+      final items = await BackendService.instance.readCollectionItems('chatRooms/$_roomId');
+      final messages = items
+          .map((item) => ChatPayload(
+                id: item['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                message: item['text']?.toString() ?? '',
+                timestamp: item['timestamp'] is int
+                    ? DateTime.fromMillisecondsSinceEpoch(item['timestamp'] as int)
+                    : DateTime.now(),
+                senderId: item['senderId']?.toString() ?? '',
+                senderName: item['senderName']?.toString() ?? '',
+                senderAvatarUrl: item['senderAvatarUrl']?.toString() ?? '',
+              ))
+          .toList();
+      messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      if (mounted) {
+        setState(() => _messages = messages);
+        Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
+      }
+    } catch (_) {}
   }
 
   Future<void> _flushPendingMessages() async {
@@ -5850,6 +6195,7 @@ class _ContactChatScreenState extends State<ContactChatScreen> {
   @override
   void dispose() {
     _messageSubscription?.cancel();
+    _pollTimer?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -5909,8 +6255,12 @@ class _ContactChatScreenState extends State<ContactChatScreen> {
     };
 
     try {
-      final reference = FirebaseDatabase.instance.ref('chatRooms/$_roomId').push();
-      await reference.set(payload);
+      if (BackendService.instance.isLocal) {
+        await BackendService.instance.appendCollectionItem('chatRooms/$_roomId', payload);
+      } else {
+        final reference = FirebaseDatabase.instance.ref('chatRooms/$_roomId').push();
+        await reference.set(payload);
+      }
       _textController.clear();
       if (mounted) {
         Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
@@ -6082,6 +6432,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Future<void> _loadFirebaseUsers() async {
     setState(() => _isLoadingUsers = true);
     try {
+      if (BackendService.instance.isLocal) {
+        final profiles = await BackendService.instance.listProfiles();
+        final users = <ContactEntry>[];
+        for (final profile in profiles) {
+          final userId = profile['userId']?.toString() ?? profile['id']?.toString() ?? '';
+          if (userId.isEmpty || userId == EnterpriseSession.userId) continue;
+          users.add(ContactEntry(
+            userId: userId,
+            name: profile['username']?.toString() ?? 'Unknown',
+            avatarUrl: profile['avatarUrl']?.toString() ?? '',
+            themeWallpaperUrl: profile['themeWallpaperUrl']?.toString() ?? '',
+          ));
+        }
+        setState(() => _firebaseUsers = users);
+        return;
+      }
+
       final snapshot = await FirebaseDatabase.instance.ref('users').get();
       if (!snapshot.exists || snapshot.value == null) {
         setState(() => _firebaseUsers = <ContactEntry>[]);
@@ -7055,6 +7422,8 @@ class TransmissionManager {
     final TextEditingController urlFieldController = TextEditingController();
     final ValueNotifier<String> errorText = ValueNotifier<String>('');
     final ValueNotifier<String> previewUrl = ValueNotifier<String>('');
+    final ValueNotifier<String> selectedFileName = ValueNotifier<String>('');
+    final bool useLocalPicker = BackendService.instance.isLocal;
 
     showModalBottomSheet(
       context: context,
@@ -7088,33 +7457,88 @@ class TransmissionManager {
                 ),
                 const WidgetSpacer(height: 14.0),
                 Text(
-                  'Attach via URL',
+                  useLocalPicker ? 'Attach a file' : 'Attach via URL',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
                 ),
                 const WidgetSpacer(height: 8.0),
                 Text(
-                  'Paste a direct link to an image or file. The attachment will appear in chat for everyone.',
+                  useLocalPicker
+                      ? 'Pick a file from your device and the app will upload it to your local server.'
+                      : 'Paste a direct link to an image or file. The attachment will appear in chat for everyone.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const WidgetSpacer(height: 18.0),
-                TextField(
-                  controller: urlFieldController,
-                  autofocus: true,
-                  keyboardType: TextInputType.url,
-                  textInputAction: TextInputAction.done,
-                  decoration: const InputDecoration(
-                    labelText: 'Image or File URL',
-                    hintText: 'https://example.com/image.png',
-                    filled: true,
-                    border: OutlineInputBorder(),
+                if (useLocalPicker) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await _pickAndUploadAttachmentFile(
+                          context,
+                          selectedFileName,
+                          previewUrl,
+                          errorText,
+                        );
+                      },
+                      icon: const Icon(Icons.attach_file),
+                      label: const Text('Pick file'),
+                    ),
                   ),
-                  onChanged: (value) {
-                    previewUrl.value = value.trim();
-                    errorText.value = '';
-                  },
-                ),
+                  const WidgetSpacer(height: 8.0),
+                  ValueListenableBuilder<String>(
+                    valueListenable: selectedFileName,
+                    builder: (context, fileName, child) {
+                      if (fileName.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16.0),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceVariant,
+                          borderRadius: BorderRadius.circular(16.0),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _attachmentIconForUrl(fileName),
+                              size: 24,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const WidgetSpacer(width: 12.0),
+                            Expanded(
+                              child: Text(
+                                _attachmentLabelForUrl(fileName),
+                                style: Theme.of(context).textTheme.bodyMedium,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ] else ...[
+                  TextField(
+                    controller: urlFieldController,
+                    autofocus: true,
+                    keyboardType: TextInputType.url,
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(
+                      labelText: 'Image or File URL',
+                      hintText: 'https://example.com/image.png',
+                      filled: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) {
+                      previewUrl.value = value.trim();
+                      errorText.value = '';
+                    },
+                  ),
+                ],
                 const WidgetSpacer(height: 16.0),
                 ValueListenableBuilder<String>(
                   valueListenable: previewUrl,
@@ -7122,7 +7546,7 @@ class TransmissionManager {
                     if (value.isEmpty) {
                       return const SizedBox.shrink();
                     }
-                    if (!_isValidUrl(value)) {
+                    if (!useLocalPicker && !_isValidUrl(value)) {
                       return Text(
                         'Enter a valid HTTP or HTTPS URL to preview the attachment.',
                         style: Theme.of(context)
@@ -7131,7 +7555,7 @@ class TransmissionManager {
                             ?.copyWith(color: Theme.of(context).colorScheme.error),
                       );
                     }
-                    if (_looksLikeImageUrl(value)) {
+                    if (!useLocalPicker && _looksLikeImageUrl(value)) {
                       return ClipRRect(
                         borderRadius: BorderRadius.circular(16.0),
                         child: Image.network(
@@ -7172,6 +7596,47 @@ class TransmissionManager {
                         ),
                       );
                     }
+                    if (!useLocalPicker) {
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16.0),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceVariant,
+                          borderRadius: BorderRadius.circular(16.0),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  _attachmentIconForUrl(value),
+                                  size: 24,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                                const WidgetSpacer(width: 12.0),
+                                Expanded(
+                                  child: Text(
+                                    _attachmentLabelForUrl(value),
+                                    style: Theme.of(context).textTheme.bodyMedium,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const WidgetSpacer(height: 10.0),
+                            Text(
+                              value,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
                     return Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(16.0),
@@ -7179,34 +7644,21 @@ class TransmissionManager {
                         color: Theme.of(context).colorScheme.surfaceVariant,
                         borderRadius: BorderRadius.circular(16.0),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
-                          Row(
-                            children: [
-                              Icon(
-                                _attachmentIconForUrl(value),
-                                size: 24,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                              const WidgetSpacer(width: 12.0),
-                              Expanded(
-                                child: Text(
-                                  _attachmentLabelForUrl(value),
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
+                          Icon(
+                            _attachmentIconForUrl(value),
+                            size: 24,
+                            color: Theme.of(context).colorScheme.primary,
                           ),
-                          const WidgetSpacer(height: 10.0),
-                          Text(
-                            value,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          const WidgetSpacer(width: 12.0),
+                          Expanded(
+                            child: Text(
+                              'Uploaded: ${selectedFileName.value}',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ],
                       ),
@@ -7239,7 +7691,18 @@ class TransmissionManager {
                     const WidgetSpacer(width: 12.0),
                     Expanded(
                       child: FilledButton(
-                        onPressed: () {
+                        onPressed: () async {
+                          if (useLocalPicker) {
+                            if (previewUrl.value.isEmpty) {
+                              errorText.value = 'Please pick a file to attach.';
+                              return;
+                            }
+                            callback('', mediaUrl: previewUrl.value);
+                            Navigator.pop(bottomSheetContext);
+                            AlertBridge.showNotification(context, 'File attached.');
+                            return;
+                          }
+
                           final String uriInput = urlFieldController.text.trim();
                           if (uriInput.isNotEmpty && _isValidUrl(uriInput)) {
                             callback('', mediaUrl: uriInput);
@@ -7266,6 +7729,72 @@ class TransmissionManager {
         );
       },
     );
+  }
+
+  Future<void> _pickAndUploadAttachmentFile(
+    BuildContext context,
+    ValueNotifier<String> selectedFileName,
+    ValueNotifier<String> previewUrl,
+    ValueNotifier<String> errorText,
+  ) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        withData: false,
+        allowMultiple: false,
+      );
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final file = result.files.first;
+      if (file.name.isEmpty) {
+        throw Exception('The selected file has no name.');
+      }
+
+      final bytes = file.bytes;
+      final filePath = file.path;
+      if (bytes == null && (filePath == null || filePath.isEmpty)) {
+        throw Exception('The selected file could not be read.');
+      }
+
+      final contentBase64 = bytes != null
+          ? base64Encode(bytes)
+          : base64Encode(await File(filePath!).readAsBytes());
+
+      final uploadedUrl = await BackendService.instance.uploadFileAndGetUrl(
+        fileName: file.name,
+        mimeType: _guessMimeType(file.name),
+        contentBase64: contentBase64,
+      );
+
+      if (uploadedUrl.isEmpty) {
+        throw Exception('The local server did not return an upload URL.');
+      }
+
+      selectedFileName.value = file.name;
+      previewUrl.value = uploadedUrl;
+      errorText.value = '';
+    } catch (error) {
+      selectedFileName.value = '';
+      previewUrl.value = '';
+      errorText.value = error.toString();
+    }
+  }
+
+  String _guessMimeType(String fileName) {
+    final lower = fileName.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.mp4')) return 'video/mp4';
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.mp3')) return 'audio/mpeg';
+    if (lower.endsWith('.wav')) return 'audio/wav';
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.txt')) return 'text/plain';
+    return 'application/octet-stream';
   }
 }
 

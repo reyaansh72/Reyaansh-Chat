@@ -3,14 +3,9 @@ const cors = require('cors');
 const admin = require('firebase-admin');
 
 const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT || '';
-const databaseUrl = process.env.FIREBASE_DATABASE_URL || '';
 
 if (!serviceAccountJson) {
   throw new Error('FIREBASE_SERVICE_ACCOUNT environment variable is required.');
-}
-
-if (!databaseUrl) {
-  throw new Error('FIREBASE_DATABASE_URL environment variable is required.');
 }
 
 let serviceAccount;
@@ -19,6 +14,11 @@ try {
 } catch (err) {
   throw new Error('FIREBASE_SERVICE_ACCOUNT must be valid JSON.');
 }
+
+const projectId = serviceAccount.project_id || 'dontcheckme';
+const databaseUrl = `https://${projectId}-default-rtdb.firebaseio.com`;
+
+console.log(`Using Realtime Database URL: ${databaseUrl}`);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
