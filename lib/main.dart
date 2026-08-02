@@ -5258,6 +5258,82 @@ class _ChatDashboardState extends State<ChatDashboard> {
     );
   }
 
+  Future<void> _showCreateGroupDialog() async {
+    final nameController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final shouldCreate = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Create group'),
+          content: Form(
+            key: formKey,
+            child: TextFormField(
+              controller: nameController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Group name',
+                hintText: 'Friends, Team, Family',
+              ),
+              validator: (value) {
+                final trimmed = value?.trim() ?? '';
+                if (trimmed.isEmpty) {
+                  return 'Please enter a group name';
+                }
+                return null;
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (formKey.currentState?.validate() ?? false) {
+                  Navigator.of(dialogContext).pop(true);
+                }
+              },
+              child: const Text('Create'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldCreate != true) return;
+
+    final groupId = FirebaseDatabase.instance.ref('groups').push().key;
+    if (groupId == null) return;
+
+    final groupName = nameController.text.trim();
+    final groupRef = FirebaseDatabase.instance.ref('groups/$groupId');
+    await groupRef.set({
+      'name': groupName,
+      'createdBy': EnterpriseSession.userId,
+      'createdAt': ServerValue.timestamp,
+      'memberIds': {EnterpriseSession.userId: true},
+    });
+    await FirebaseDatabase.instance.ref('groupMembers/$groupId/${EnterpriseSession.userId}').set({
+      'role': 'admin',
+      'joinedAt': ServerValue.timestamp,
+    });
+
+    if (!mounted) return;
+    nameController.dispose();
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => GroupChatScreen(group: GroupChatEntry(
+        id: groupId,
+        name: groupName,
+        createdBy: EnterpriseSession.userId,
+        memberIds: [EnterpriseSession.userId],
+        createdAt: DateTime.now(),
+      ))),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
