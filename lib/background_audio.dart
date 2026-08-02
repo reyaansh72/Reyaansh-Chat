@@ -57,7 +57,7 @@ class BackgroundAudioController {
   }
 
   Future<String?> pickAndSetMusic() async {
-    final result = await FilePicker.pickFiles(
+    final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['mp3'],
       withData: false,

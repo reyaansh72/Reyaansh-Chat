@@ -1620,7 +1620,7 @@ class SettingsScreen extends StatelessWidget {
       return;
     }
 
-    final filePath = await FilePicker.saveFile(
+    final filePath = await FilePicker.platform.saveFile(
       dialogTitle: 'Save chat backup',
       fileName: defaultName,
       type: FileType.custom,
@@ -1643,7 +1643,7 @@ class SettingsScreen extends StatelessWidget {
       return;
     }
 
-    final result = await FilePicker.pickFiles(
+    final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
       allowMultiple: false,
