@@ -27,7 +27,7 @@ import 'backend_service.dart';
 
 const String kNotificationBackendUrl = String.fromEnvironment(
   'NOTIFICATION_BACKEND_URL',
-  defaultValue: 'https://Reyaansh-Chat-Backend.onrender.com',
+  defaultValue: 'https://Reyaansh-Chat.onrender.com',
 );
 
 const AndroidNotificationChannel _chatNotificationChannel = AndroidNotificationChannel(
@@ -257,6 +257,11 @@ class _StoriesScreenState extends State<StoriesScreen> {
       );
       return;
     }
+  void _showToast(BuildContext context, String message) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(message)),
+  );
+}
 
     setState(() => _isUploading = true);
     try {
@@ -5298,13 +5303,6 @@ class _ChatDashboardState extends State<ChatDashboard> {
     required String text,
     required String messageId,
   }) async {
-
-  Future<void> _notifyNotificationService({
-    required String senderId,
-    required String senderName,
-    required String text,
-    required String messageId,
-  }) async {
     if (kNotificationBackendUrl.contains('your-render-backend')) {
       return;
     }
@@ -5804,7 +5802,6 @@ class _ChatDashboardState extends State<ChatDashboard> {
       ),
     );
   }
-}
 }
 
 class GroupChatScreen extends StatefulWidget {
