@@ -392,6 +392,7 @@ class SettingsScreen extends StatelessWidget {
   static final ValueNotifier<bool> _gestureShortcutsNotifier = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> _chatBubbleCustomizationNotifier = ValueNotifier<bool>(false);
   static final ValueNotifier<String> _selectedChatBubbleStyleNotifier = ValueNotifier<String>('Default');
+  static final ValueNotifier<String> _selectedChatThemeNotifier = ValueNotifier<String>('Default');
   static final ValueNotifier<bool> _quickReplyNotifier = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> _typingStatusNotifier = ValueNotifier<bool>(true);
   static final ValueNotifier<bool> _deviceSyncNotifier = ValueNotifier<bool>(true);
@@ -497,6 +498,7 @@ class SettingsScreen extends StatelessWidget {
     saveBool('gestureShortcuts', _gestureShortcutsNotifier);
     saveBool('chatBubbleCustomization', _chatBubbleCustomizationNotifier);
     saveString('selectedChatBubbleStyle', _selectedChatBubbleStyleNotifier);
+    saveString('selectedChatTheme', _selectedChatThemeNotifier);
     saveBool('quickReply', _quickReplyNotifier);
     saveBool('typingStatus', _typingStatusNotifier);
     saveBool('deviceSync', _deviceSyncNotifier);
@@ -567,6 +569,7 @@ class SettingsScreen extends StatelessWidget {
     _gestureShortcutsNotifier.value = EnterpriseSession._prefs.getBool('gestureShortcuts') ?? true;
     _chatBubbleCustomizationNotifier.value = EnterpriseSession._prefs.getBool('chatBubbleCustomization') ?? false;
     _selectedChatBubbleStyleNotifier.value = EnterpriseSession._prefs.getString('selectedChatBubbleStyle') ?? 'Default';
+    _selectedChatThemeNotifier.value = EnterpriseSession._prefs.getString('selectedChatTheme') ?? 'Default';
     _quickReplyNotifier.value = EnterpriseSession._prefs.getBool('quickReply') ?? true;
     _typingStatusNotifier.value = EnterpriseSession._prefs.getBool('typingStatus') ?? true;
     _deviceSyncNotifier.value = EnterpriseSession._prefs.getBool('deviceSync') ?? true;
@@ -830,6 +833,7 @@ class SettingsScreen extends StatelessWidget {
     _gestureShortcutsNotifier.value = true;
     _chatBubbleCustomizationNotifier.value = false;
     _selectedChatBubbleStyleNotifier.value = 'Default';
+    _selectedChatThemeNotifier.value = 'Default';
     _quickReplyNotifier.value = true;
     _typingStatusNotifier.value = true;
     _deviceSyncNotifier.value = true;
@@ -893,6 +897,22 @@ class SettingsScreen extends StatelessWidget {
                 ChoiceChip(label: const Text('Dark'), selected: current == 'dark', onSelected: (_) => EnterpriseSession.setThemeVariant('dark')),
                 ChoiceChip(label: const Text('Amoled'), selected: current == 'amoled', onSelected: (_) => EnterpriseSession.setThemeVariant('amoled')),
               ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text('Chat Theme', style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: 8),
+          ValueListenableBuilder<String>(
+            valueListenable: _selectedChatThemeNotifier,
+            builder: (context, current, _) => Wrap(
+              spacing: 8,
+              children: ['Default', 'Midnight', 'Mint', 'Rose'].map((theme) {
+                return ChoiceChip(
+                  label: Text(theme),
+                  selected: current == theme,
+                  onSelected: (_) => _selectedChatThemeNotifier.value = theme,
+                );
+              }).toList(),
             ),
           ),
           const Divider(),
@@ -3442,22 +3462,19 @@ Future<void> _initializeFirebaseMessaging() async {
 }
 
 void main() async {
-  // 1. Finalizes low-level platform channels and loops
+  WidgetsFlutterBinding.ensureInitialized();
   AppInitializer.setupHardwareAcceleration();
 
-  // 2. Initialize SharedPreferences for session persistence
   await EnterpriseSession.initializePreferences();
   await SettingsScreen.initializePreferences();
 
-  // 3. Initialise the native Firebase core engine architecture
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await _initializeFirebaseMessaging();
+  unawaited(_initializeFirebaseMessaging());
 
   if (EnterpriseSession.isLoggedIn()) {
-    await EnterpriseSession.publishProfileToFirebase();
+    unawaited(EnterpriseSession.publishProfileToFirebase());
   }
 
-  // 4. Mount and build the Material 3 app workspace tree
   runApp(const ReyaanshCoreApp());
 }
 
@@ -4156,7 +4173,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Text(
                       EnterpriseSession.isLoggedIn()
                           ? 'You are logged in. Edit or logout below.'
-                          : 'Set up your profile to join the global chat',
+                          : 'Set up your profile to start chatting with your contacts',
                       style: TextStyle(color: colors.onSurfaceVariant),
                       textAlign: TextAlign.center,
                     ),
@@ -4796,7 +4813,7 @@ class _ChatDashboardState extends State<ChatDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colors = Theme.of(context).colorScheme;
+    final colors = Theme.of(context).colorScheme;
 
     void handleLogout() async {
       await EnterpriseSession.logout();
@@ -4812,7 +4829,7 @@ class _ChatDashboardState extends State<ChatDashboard> {
       backgroundColor: colors.surfaceContainerHigh,
       appBar: AppBar(
         title: const Text(
-          'Reyaansh Chat',
+          'Contacts',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
         backgroundColor: colors.primaryContainer,
@@ -4836,32 +4853,12 @@ class _ChatDashboardState extends State<ChatDashboard> {
           IconButton(
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ContactsScreen()),
-              );
-            },
-            icon: const Icon(Icons.contacts),
-            color: colors.onPrimaryContainer,
-            tooltip: 'Contacts',
-          ),
-          IconButton(
-            onPressed: () {
-              Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
               );
             },
             icon: const Icon(Icons.format_paint),
             color: colors.onPrimaryContainer,
             tooltip: 'Settings',
-          ),
-          IconButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const VideoFeedScreen()),
-              );
-            },
-            icon: const Icon(Icons.video_library),
-            color: colors.onPrimaryContainer,
-            tooltip: 'Video Feed',
           ),
           Padding(
             padding: const EdgeInsets.only(right: 8.0),
@@ -4890,221 +4887,255 @@ class _ChatDashboardState extends State<ChatDashboard> {
           ),
         ],
       ),
-      body: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          final bool isDesktop = constraints.maxWidth >= 650;
-
-          return Center(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: isDesktop ? 850.0 : double.infinity,
-              ),
-              color: colors.surface,
-              child: Column(
-                children: [
-                  Expanded(
-                    child: StreamBuilder<DatabaseEvent>(
-                      stream: _rtdbStream,
-                      builder: (context, snapshot) {
-                        if (snapshot.hasError) {
-                          return Center(
-                            child: Text('Sync error: ${snapshot.error}'),
-                          ).padAll(16);
-                        }
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        }
-
-                        final event = snapshot.data;
-                        final messages =
-                            event?.snapshot.children
-                                .map((child) => ChatPayload.fromRtdb(child))
-                                .toList() ??
-                            [];
-
-                        messages.sort(
-                          (a, b) => a.timestamp.compareTo(b.timestamp),
-                        );
-
-                        if (messages.isEmpty) {
-                          return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.forum_outlined,
-                                  size: 64,
-                                  color: colors.outline,
-                                ),
-                                const WidgetSpacer(height: 16),
-                                Text(
-                                  'Say hello to the community!',
-                                  style: TextStyle(color: colors.outline),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
-
-                        WidgetsBinding.instance.addPostFrameCallback(
-                          (_) => _scrollToBottom(),
-                        );
-
-                        final typingContacts = EnterpriseSession.contacts
-                            .where((contact) => _contactTypingStatuses[contact.userId] == true)
-                            .toList();
-
-                        return Column(
-                          children: [
-                            if (typingContacts.isNotEmpty &&
-                                SettingsScreen._typingIndicatorsNotifier.value) ...[
-                              Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16.0,
-                                  vertical: 10.0,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: colors.primary.withOpacity(0.10),
-                                  borderRadius: BorderRadius.circular(16.0),
-                                ),
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 16.0,
-                                  vertical: 8.0,
-                                ),
-                                child: Text(
-                                  typingContacts.length == 1
-                                      ? '${typingContacts.first.name} is typing...'
-                                      : '${typingContacts.map((c) => c.name).join(', ')} are typing...',
-                                  style: TextStyle(
-                                    color: colors.primary,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                            Expanded(
-                              child: ListView.builder(
-                                controller: _scrollController,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16.0,
-                                  vertical: 12.0,
-                                ),
-                                itemCount: messages.length,
-                                itemBuilder: (context, index) {
-                                  final payload = messages[index];
-                                  return MultiMediaMessageEngine(payload: payload);
-                                },
-                              ),
-                            ),
-                          ],
-                        );
-                      },
+      body: ValueListenableBuilder<List<ContactEntry>>(
+        valueListenable: EnterpriseSession.contactsNotifier,
+        builder: (context, contacts, _) {
+          if (contacts.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.contacts_rounded, size: 72, color: colors.outline),
+                    const WidgetSpacer(height: 16),
+                    Text('No contacts yet', style: Theme.of(context).textTheme.titleMedium),
+                    const WidgetSpacer(height: 8),
+                    Text('Add a contact and start a private conversation.', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium),
+                    const WidgetSpacer(height: 20),
+                    FilledButton.icon(
+                      onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactsScreen())),
+                      icon: const Icon(Icons.person_add_alt_1),
+                      label: const Text('Add contact'),
                     ),
-                  ),
-                  ValueListenableBuilder<bool>(
-                    valueListenable: SettingsScreen._typingIndicatorsNotifier,
-                    builder: (context, enabled, _) {
-                      if (!enabled || !_isComposing) {
-                        return const SizedBox.shrink();
-                      }
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
-                        child: Row(
-                          children: [
-                            Icon(Icons.edit_note, size: 16.0, color: colors.primary),
-                            const SizedBox(width: 8.0),
-                            Text(
-                              'Typing...',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: colors.primary),
-                            ),
-                          ],
-                        ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async => setState(() {}),
+            child: ListView.separated(
+              padding: const EdgeInsets.all(16.0),
+              itemCount: contacts.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final contact = contacts[index];
+                return Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    leading: UserAvatarWidget(url: contact.avatarUrl, size: 48),
+                    title: Text(contact.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(contact.userId.isNotEmpty ? 'Tap to open chat' : 'Add a valid user ID', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => ContactChatScreen(contact: contact)),
                       );
                     },
                   ),
-                  _buildInputDock(colors),
-                ],
-              ),
+                );
+              },
             ),
           );
         },
       ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactsScreen())),
+        icon: const Icon(Icons.person_add_alt_1),
+        label: const Text('Add contact'),
+      ),
     );
   }
+}
 
-  Widget _buildInputDock(ColorScheme colors) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        border: Border(
-          top: BorderSide(color: colors.outlineVariant, width: 0.5),
+class ContactChatScreen extends StatefulWidget {
+  final ContactEntry contact;
+
+  const ContactChatScreen({super.key, required this.contact});
+
+  @override
+  State<ContactChatScreen> createState() => _ContactChatScreenState();
+}
+
+class _ContactChatScreenState extends State<ContactChatScreen> {
+  final TextEditingController _textController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  List<ChatPayload> _messages = <ChatPayload>[];
+  late final String _roomId;
+  StreamSubscription<DatabaseEvent>? _messageSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _roomId = _buildRoomId(EnterpriseSession.userId, widget.contact.userId);
+    _messageSubscription = FirebaseDatabase.instance
+        .ref('chatRooms/$_roomId')
+        .onValue
+        .listen((event) {
+          final messages = event.snapshot.children
+              .map((child) => ChatPayload.fromRtdb(child))
+              .toList();
+          messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          if (!mounted) return;
+          setState(() {
+            _messages = messages;
+          });
+          Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
+        });
+  }
+
+  @override
+  void dispose() {
+    _messageSubscription?.cancel();
+    _textController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  String _buildRoomId(String userId, String contactId) {
+    final ids = [userId, contactId]..sort();
+    return 'chat_${ids.first}_${ids.last}';
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  Future<void> _sendMessage() async {
+    final content = _textController.text.trim();
+    if (content.isEmpty) return;
+
+    final reference = FirebaseDatabase.instance.ref('chatRooms/$_roomId').push();
+    await reference.set({
+      'text': content,
+      'mediaUrl': null,
+      'timestamp': ServerValue.timestamp,
+      'senderId': EnterpriseSession.userId,
+      'senderName': EnterpriseSession.username,
+      'senderAvatarUrl': EnterpriseSession.avatarUrl,
+    });
+    _textController.clear();
+    Future.delayed(const Duration(milliseconds: 120), _scrollToBottom);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final chatTheme = SettingsScreen._selectedChatThemeNotifier.value;
+    final scaffoldColor = chatTheme == 'Midnight'
+        ? const Color(0xFF0F172A)
+        : chatTheme == 'Mint'
+            ? const Color(0xFFE8F5E9)
+            : chatTheme == 'Rose'
+                ? const Color(0xFFFFF1F2)
+                : colors.surfaceContainerHigh;
+    final bubbleColor = chatTheme == 'Midnight'
+        ? const Color(0xFF1E293B)
+        : chatTheme == 'Mint'
+            ? const Color(0xFFB9F6CA)
+            : chatTheme == 'Rose'
+                ? const Color(0xFFF8BBD0)
+                : colors.primaryContainer;
+    final bubbleTextColor = chatTheme == 'Midnight'
+        ? Colors.white
+        : colors.onSurface;
+
+    return Scaffold(
+      backgroundColor: scaffoldColor,
+      appBar: AppBar(
+        backgroundColor: chatTheme == 'Midnight' ? const Color(0xFF111827) : colors.primaryContainer,
+        foregroundColor: chatTheme == 'Midnight' ? Colors.white : colors.onPrimaryContainer,
+        titleSpacing: 0,
+        title: Row(
+          children: [
+            UserAvatarWidget(url: widget.contact.avatarUrl, size: 34),
+            const SizedBox(width: 10),
+            Expanded(child: Text(widget.contact.name, overflow: TextOverflow.ellipsis)),
+          ],
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      child: SafeArea(
-        child: Row(
-          children: [
-            TouchFeedbackEnhancer(
-              onTap: _openAttachmentSequence,
-              borderRadius: BorderRadius.circular(24.0),
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Icon(
-                  Icons.add_photo_alternate_outlined,
-                  color: colors.primary,
-                ),
-              ),
-            ),
-            const WidgetSpacer(width: 8.0),
-            Expanded(
-              child: ValueListenableBuilder<double>(
-                valueListenable: SettingsScreen._chatFontSizeNotifier,
-                builder: (context, fontSize, _) {
-                  return ValueListenableBuilder<bool>(
-                    valueListenable: SettingsScreen._sendWithEnterNotifier,
-                    builder: (context, sendWithEnter, _) {
-                      return TextField(
-                        controller: _textController,
-                        style: TextStyle(fontSize: fontSize),
-                        keyboardType: sendWithEnter ? TextInputType.text : TextInputType.multiline,
-                        textInputAction: sendWithEnter ? TextInputAction.send : TextInputAction.newline,
-                        minLines: 1,
-                        maxLines: sendWithEnter ? 1 : 5,
-                        onSubmitted: sendWithEnter ? (value) => _handleDispatch(value) : null,
-                        decoration: InputDecoration(
-                          hintText: "Type a message...",
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 20.0,
-                            vertical: 10.0,
+      body: Column(
+        children: [
+          Expanded(
+            child: _messages.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.chat_bubble_outline, size: 60, color: colors.outline),
+                        const SizedBox(height: 12),
+                        Text('Start chatting with ${widget.contact.name}', style: Theme.of(context).textTheme.titleMedium),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final message = _messages[index];
+                      final isMe = message.senderId == EnterpriseSession.userId;
+                      return Align(
+                        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          constraints: const BoxConstraints(maxWidth: 320),
+                          decoration: BoxDecoration(
+                            color: isMe ? bubbleColor : colors.surface,
+                            borderRadius: BorderRadius.circular(18),
                           ),
-                          filled: true,
-                          fillColor: colors.surfaceContainerHigh,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(28.0),
-                            borderSide: BorderSide.none,
+                          child: Text(
+                            message.message,
+                            style: TextStyle(color: isMe ? bubbleTextColor : colors.onSurface, fontSize: SettingsScreen._chatFontSizeNotifier.value),
                           ),
                         ),
                       );
                     },
-                  );
-                },
-              ),
+                  ),
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            color: colors.surface,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _textController,
+                    style: TextStyle(fontSize: SettingsScreen._chatFontSizeNotifier.value),
+                    decoration: InputDecoration(
+                      hintText: 'Type a message',
+                      filled: true,
+                      fillColor: colors.surfaceContainerHighest,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    ),
+                    onSubmitted: (_) => _sendMessage(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FloatingActionButton.small(
+                  onPressed: _sendMessage,
+                  child: const Icon(Icons.send_rounded),
+                ),
+              ],
             ),
-            const WidgetSpacer(width: 8.0),
-            FloatingActionButton.small(
-              onPressed: () => _handleDispatch(_textController.text),
-              elevation: 0,
-              hoverElevation: 2,
-              backgroundColor: colors.primary,
-              foregroundColor: colors.onPrimary,
-              child: const Icon(Icons.send_rounded),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
