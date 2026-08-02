@@ -359,6 +359,7 @@ class PluginManager {
       type: FileType.custom,
       allowedExtensions: <String>['dart'],
       withData: true,
+      allowMultiple: false,
     );
 
     if (result == null || result.files.isEmpty) {

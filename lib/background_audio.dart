@@ -61,6 +61,7 @@ class BackgroundAudioController {
       type: FileType.custom,
       allowedExtensions: ['mp3'],
       withData: false,
+      allowMultiple: false,
     );
 
     if (result == null || result.files.isEmpty) {

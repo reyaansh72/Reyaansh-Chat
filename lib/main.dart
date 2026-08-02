@@ -1646,6 +1646,7 @@ class SettingsScreen extends StatelessWidget {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
+      allowMultiple: false,
     );
 
     if (result == null || result.files.isEmpty) {
