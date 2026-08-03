@@ -469,7 +469,7 @@ class SettingsScreen extends StatelessWidget {
   // ==========================================
   // APP VERSION CONSTANTS
   // ==========================================
-  static const String _currentVersion = '1.14';
+  static const String _currentVersion = '1.15';
   static const String _gitHubRepo = 'reyaansh72/Reyaansh-Chat';
   static const String _gitHubApiUrl = 'https://api.github.com/repos/reyaansh72/Reyaansh-Chat/releases';
 
