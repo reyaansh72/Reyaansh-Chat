@@ -257,11 +257,6 @@ class _StoriesScreenState extends State<StoriesScreen> {
       );
       return;
     }
-  void _showToast(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message)),
-  );
-}
 
     setState(() => _isUploading = true);
     try {
@@ -1592,7 +1587,7 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  void _showToast(BuildContext context, String message) {
+  static void _showToast(BuildContext context, String message) {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

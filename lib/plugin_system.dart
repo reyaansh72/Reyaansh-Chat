@@ -180,25 +180,25 @@ final plugin = PluginDefinition(
   }
 
   static String? _extractString(String source, String fieldName) {
-    final regex = RegExp(r"""$fieldName\s*'([^']*)'""", caseSensitive: false);
+    final regex = RegExp('$fieldName\\s*\'([^\']*)\'', caseSensitive: false);
     final match = regex.firstMatch(source);
     return match?.group(1);
   }
 
   static int? _extractInt(String source, String fieldName) {
-    final regex = RegExp(r'''$fieldName\s*(\d+)''', caseSensitive: false);
+    final regex = RegExp('$fieldName\\s*(\\d+)', caseSensitive: false);
     final match = regex.firstMatch(source);
     return match == null ? null : int.tryParse(match.group(1)!);
   }
 
   static double? _extractDouble(String source, String fieldName) {
-    final regex = RegExp(r'''$fieldName\s*([0-9.]+)''', caseSensitive: false);
+    final regex = RegExp('$fieldName\\s*([0-9.]+)', caseSensitive: false);
     final match = regex.firstMatch(source);
     return match == null ? null : double.tryParse(match.group(1)!);
   }
 
   static bool? _extractBool(String source, String fieldName) {
-    final regex = RegExp(r'''$fieldName\s*(true|false)''', caseSensitive: false);
+    final regex = RegExp('$fieldName\\s*(true|false)', caseSensitive: false);
     final match = regex.firstMatch(source);
     return match == null ? null : match.group(1)!.toLowerCase() == 'true';
   }
@@ -347,11 +347,15 @@ class PluginManager {
   }
 
   static Future<void> importPluginFromDartSource(String source) async {
-    final parsed = PluginDefinition.parsePluginDefinitionFromDartSource(source);
+    final parsed = parsePluginDefinitionFromDartSource(source);
     if (parsed == null) {
       throw const FormatException('The plugin file does not contain a valid PluginDefinition.');
     }
     await addOrUpdatePlugin(parsed);
+  }
+
+  static PluginDefinition? parsePluginDefinitionFromDartSource(String source) {
+    return PluginDefinition.parsePluginDefinitionFromDartSource(source);
   }
 
   static Future<void> importPluginFromFile() async {
