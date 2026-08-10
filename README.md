@@ -11,6 +11,11 @@
 ## ✨ Features
 
 - 🎨 **Material You (Dynamic Color)** — UI adapts to your device's theme
+- 🧩 All-in-one launcher with chat, file transfer, notes, device info, and server management
+- ☁️ Firebase Realtime Database publishing and JSON editor
+- 📝 Publish notes directly to Firebase from the notes app
+- 📱 Device diagnostics page with detailed platform metadata
+- 🛠️ Server management page with GitHub repo status and RTDB JSON editing
 - ⚡ Fast, smooth, and lightweight
 - 📱 Cross-platform: Android & Web
 - 🔓 Open source under MIT License

@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:provider/provider.dart';
 
+import 'about.dart';
 import 'chat.dart';
 import 'filesend.dart';
+import 'notes.dart';
+import 'server_management.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,10 +26,10 @@ class _AppSelectorAppState extends State<AppSelectorApp> {
   Color _seedColor = const Color(0xFF6750A4);
   ThemeMode _themeMode = ThemeMode.light;
 
-  void _pickColor() {
+  void _pickColor(BuildContext context) {
     showDialog<void>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Pick a Material You color'),
           content: SingleChildScrollView(
@@ -40,7 +43,7 @@ class _AppSelectorAppState extends State<AppSelectorApp> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('Done'),
             ),
           ],
@@ -61,14 +64,14 @@ class _AppSelectorAppState extends State<AppSelectorApp> {
     });
   }
 
-  void _openChat() {
+  void _openChat(BuildContext context) {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const ReyaanshCoreApp()),
     );
   }
 
-  void _openDrop() {
+  void _openDrop(BuildContext context) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -79,6 +82,27 @@ class _AppSelectorAppState extends State<AppSelectorApp> {
           child: const FileTransferApp(),
         ),
       ),
+    );
+  }
+
+  void _openNotes(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ReyaanshNotesApp()),
+    );
+  }
+
+  void _openAboutDevice(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AboutDevicePage()),
+    );
+  }
+
+  void _openServerManagement(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ServerManagementPage()),
     );
   }
 
@@ -95,114 +119,140 @@ class _AppSelectorAppState extends State<AppSelectorApp> {
       theme: ThemeData(useMaterial3: true, colorScheme: colorScheme),
       darkTheme: ThemeData(useMaterial3: true, colorScheme: colorScheme.copyWith(brightness: Brightness.dark)),
       themeMode: _themeMode,
-      home: Scaffold(
-        appBar: AppBar(
-          title: const Text('Material You App Selector'),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.color_lens),
-              tooltip: 'Pick theme color',
-              onPressed: _pickColor,
-            ),
-          ],
-        ),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Welcome to the Reyaansh All-in-One Launcher',
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Choose an app below and customize the Material You theme color.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 20),
-                Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 18.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            CircleAvatar(backgroundColor: _seedColor, radius: 18),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Material You theme color',
-                                style: Theme.of(context).textTheme.titleMedium,
+      home: Builder(
+        builder: (context) => Scaffold(
+          appBar: AppBar(
+            title: const Text('Material You App Selector'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.color_lens),
+                tooltip: 'Pick theme color',
+                onPressed: () => _pickColor(context),
+              ),
+            ],
+          ),
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Welcome to the Reyaansh All-in-One Launcher',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Choose an app below and customize the Material You theme color.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 20),
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 18.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(backgroundColor: _seedColor, radius: 18),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Material You theme color',
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                ),
                               ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.shuffle),
-                              tooltip: 'Randomize color',
-                              onPressed: _randomizeColor,
-                            ),
-                          ],
+                              IconButton(
+                                icon: const Icon(Icons.shuffle),
+                                tooltip: 'Randomize color',
+                                onPressed: _randomizeColor,
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              ElevatedButton.icon(
+                                icon: const Icon(Icons.palette),
+                                label: const Text('Pick color'),
+                                onPressed: () => _pickColor(context),
+                              ),
+                              FilledButton.icon(
+                                icon: const Icon(Icons.dark_mode),
+                                label: Text(_themeMode == ThemeMode.dark ? 'Dark mode' : 'Light mode'),
+                                onPressed: () {
+                                  setState(() {
+                                    _themeMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        _buildAppCard(
+                          icon: Icons.chat_bubble_outline,
+                          title: 'Reyaansh Chat',
+                          subtitle: 'Open the chat experience from chat.dart',
+                          onTap: () => _openChat(context),
+                          color: colorScheme.primary,
                         ),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: [
-                            ElevatedButton.icon(
-                              icon: const Icon(Icons.palette),
-                              label: const Text('Pick color'),
-                              onPressed: _pickColor,
-                            ),
-                            FilledButton.icon(
-                              icon: const Icon(Icons.dark_mode),
-                              label: Text(_themeMode == ThemeMode.dark ? 'Dark mode' : 'Light mode'),
-                              onPressed: () {
-                                setState(() {
-                                  _themeMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
-                                });
-                              },
-                            ),
-                          ],
+                        const SizedBox(height: 16),
+                        _buildAppCard(
+                          icon: Icons.cloud_upload_outlined,
+                          title: 'Reyaansh Drop',
+                          subtitle: 'Open the file sender in filesend.dart',
+                          onTap: () => _openDrop(context),
+                          color: colorScheme.secondary,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildAppCard(
+                          icon: Icons.sticky_note_2_outlined,
+                          title: 'Reyaansh Notes',
+                          subtitle: 'Open the note-taking app from notes.dart',
+                          onTap: () => _openNotes(context),
+                          color: colorScheme.tertiary,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildAppCard(
+                          icon: Icons.devices,
+                          title: 'About Device',
+                          subtitle: 'See hardware and platform details',
+                          onTap: () => _openAboutDevice(context),
+                          color: colorScheme.primaryContainer,
+                        ),
+                        const SizedBox(height: 16),
+                        _buildAppCard(
+                          icon: Icons.storage,
+                          title: 'Server Management',
+                          subtitle: 'Manage Firebase status and RTDB JSON',
+                          onTap: () => _openServerManagement(context),
+                          color: colorScheme.secondaryContainer,
                         ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                Expanded(
-                  child: ListView(
-                    children: [
-                      _buildAppCard(
-                        icon: Icons.chat_bubble_outline,
-                        title: 'Reyaansh Chat',
-                        subtitle: 'Open the chat experience from chat.dart',
-                        onTap: _openChat,
-                        color: colorScheme.primary,
-                      ),
-                      const SizedBox(height: 16),
-                      _buildAppCard(
-                        icon: Icons.cloud_upload_outlined,
-                        title: 'Reyaansh Drop',
-                        subtitle: 'Open the file sender in filesend.dart',
-                        onTap: _openDrop,
-                        color: colorScheme.secondary,
-                      ),
-                    ],
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Text(
+                      'Tap a tile to open the app. Use the theme controls above to preview Material You styling.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                      textAlign: TextAlign.center,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Center(
-                  child: Text(
-                    'Tap a tile to open the app. Use the theme controls above to preview Material You styling.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
