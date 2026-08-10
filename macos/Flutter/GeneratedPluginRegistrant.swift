@@ -6,6 +6,7 @@ import FlutterMacOS
 import Foundation
 
 import audioplayers_darwin
+import dynamic_color
 import file_picker
 import firebase_core
 import firebase_database
@@ -18,6 +19,7 @@ import webview_flutter_wkwebview
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   AudioplayersDarwinPlugin.register(with: registry.registrar(forPlugin: "AudioplayersDarwinPlugin"))
+  DynamicColorPlugin.register(with: registry.registrar(forPlugin: "DynamicColorPlugin"))
   FilePickerPlugin.register(with: registry.registrar(forPlugin: "FilePickerPlugin"))
   FLTFirebaseCorePlugin.register(with: registry.registrar(forPlugin: "FLTFirebaseCorePlugin"))
   FLTFirebaseDatabasePlugin.register(with: registry.registrar(forPlugin: "FLTFirebaseDatabasePlugin"))

@@ -4,8 +4,10 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   audioplayers_windows
+  dynamic_color
   firebase_core
   firebase_database
+  permission_handler_windows
   url_launcher_windows
 )
 
