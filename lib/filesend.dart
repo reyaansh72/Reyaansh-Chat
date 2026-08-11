@@ -13,6 +13,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:english_words/english_words.dart';
 import 'dart:typed_data';
+import 'dart:math';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,6 +75,15 @@ class TransferSession {
   }
 }
 
+class _IncomingBuffer {
+  final String name;
+  final int expectedSize;
+  final BytesBuilder _builder = BytesBuilder();
+  _IncomingBuffer({required this.name, required this.expectedSize});
+  void append(Uint8List chunk) => _builder.add(chunk);
+  Uint8List get bytes => _builder.toBytes();
+}
+
 // --- STATE MANAGEMENT ---
 
 class AppState extends ChangeNotifier {
@@ -94,6 +107,11 @@ class AppState extends ChangeNotifier {
   int chunkSize = 64 * 1024; // 64KB
   String logLevel = 'info';
   bool simulateSlowNetwork = false;
+  // WebSocket relay settings
+  String webSocketUrl = 'wss://reyaansh-chat.onrender.com/ws';
+  WebSocketChannel? _wsChannel;
+  // Incoming file assembly buffer for web transfers
+  Map<String, _IncomingBuffer> _incomingBuffers = {};
   int _nextPayloadId = 1;
   // Persistence
   Map<String, String> persistedGroups = {};
@@ -256,6 +274,12 @@ class AppState extends ChangeNotifier {
   void setSimulateSlowNetwork(bool v) {
     simulateSlowNetwork = v;
     log('Simulate slow network: $v');
+    notifyListeners();
+  }
+
+  void setWebSocketUrl(String url) {
+    webSocketUrl = url;
+    log('WebSocket URL set to $url');
     notifyListeners();
   }
   
@@ -579,6 +603,101 @@ class AppState extends ChangeNotifier {
       activeTransfers.remove(payloadId);
     }
   }
+
+  // --- WebSocket-based relay transfer (simple implementation) ---
+  String _generateRoomId([int length = 6]) {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    final rnd = Random.secure();
+    return List.generate(length, (_) => chars[rnd.nextInt(chars.length)]).join();
+  }
+
+  Future<String> startWebSend(File file, String fileName) async {
+    final room = _generateRoomId();
+    final uri = Uri.parse(webSocketUrl);
+    _wsChannel = WebSocketChannel.connect(uri);
+    // join room
+    _wsChannel!.sink.add(json.encode({'type': 'join', 'room': room}));
+
+    // send metadata
+    final size = await file.length();
+    _wsChannel!.sink.add(json.encode({'type': 'file-meta', 'name': fileName, 'size': size}));
+
+    // stream file in chunks
+    await for (final chunk in file.openRead()) {
+      _wsChannel!.sink.add(chunk);
+      if (simulateSlowNetwork) await Future.delayed(const Duration(milliseconds: 50));
+    }
+
+    // notify end
+    _wsChannel!.sink.add(json.encode({'type': 'file-end'}));
+    log('Web send started: $fileName -> room $room');
+    return room;
+  }
+
+  Future<String> startWebSendBytes(Uint8List data, String fileName) async {
+    final room = _generateRoomId();
+    final uri = Uri.parse(webSocketUrl);
+    _wsChannel = WebSocketChannel.connect(uri);
+    _wsChannel!.sink.add(json.encode({'type': 'join', 'room': room}));
+    final size = data.length;
+    _wsChannel!.sink.add(json.encode({'type': 'file-meta', 'name': fileName, 'size': size}));
+
+    // send in chunks
+    for (var offset = 0; offset < data.length; offset += chunkSize) {
+      final end = (offset + chunkSize < data.length) ? offset + chunkSize : data.length;
+      final slice = data.sublist(offset, end);
+      _wsChannel!.sink.add(slice);
+      if (simulateSlowNetwork) await Future.delayed(const Duration(milliseconds: 50));
+    }
+
+    _wsChannel!.sink.add(json.encode({'type': 'file-end'}));
+    log('Web send started (bytes): $fileName -> room $room');
+    return room;
+  }
+
+  Future<void> joinWebRoom(String room) async {
+    final uri = Uri.parse(webSocketUrl);
+    final ch = WebSocketChannel.connect(uri);
+    ch.sink.add(json.encode({'type': 'join', 'room': room}));
+
+    ch.stream.listen((message) async {
+      if (message is List<int>) {
+        // binary chunk
+        final buf = _incomingBuffers[room];
+        if (buf != null) {
+          buf.append(Uint8List.fromList(message));
+        }
+      } else if (message is String) {
+        try {
+          final Map<String, dynamic> msg = json.decode(message);
+          if (msg['type'] == 'file-meta') {
+            _incomingBuffers[room] = _IncomingBuffer(name: msg['name'] ?? 'received.bin', expectedSize: msg['size'] ?? 0);
+          } else if (msg['type'] == 'file-end') {
+            final buf = _incomingBuffers.remove(room);
+            if (buf != null) {
+              // write to temp file
+              final dir = await getTemporaryDirectory();
+              final out = File('${dir.path}/${buf.name}');
+              await out.writeAsBytes(buf.bytes);
+              // register in history
+              transferHistory.insert(0, {'fileName': buf.name, 'size': buf.bytes.length, 'timestamp': DateTime.now().toIso8601String()});
+              _saveHistory();
+              log('Received web file: ${buf.name} (${buf.bytes.length} bytes)');
+            }
+          } else if (msg['type'] == 'peer-joined') {
+            log('Peer joined room ${msg['room']}');
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }, onDone: () {
+      ch.sink.close();
+    }, onError: (e) {
+      log('WebSocket error: $e');
+      ch.sink.close();
+    });
+  }
 }
 
 // --- UI COMPONENTS ---
@@ -746,6 +865,72 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     icon: Icon(state.isDiscovering ? Icons.stop : Icons.search),
                     label: Text(state.isDiscovering ? "Stop Scan" : "Find Nearby"),
                     onPressed: state.toggleDiscovery,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.qr_code),
+                    label: const Text('Send via Web (QR)'),
+                    onPressed: () async {
+                      final result = await FilePicker.platform.pickFiles();
+                      if (result == null || result.files.isEmpty) return;
+                      final picked = result.files.first;
+                      final path = picked.path;
+                      String room;
+                      if (path == null || !File(path).existsSync()) {
+                        // Web: use bytes if available
+                        if (picked.bytes != null) {
+                          room = await state.startWebSendBytes(picked.bytes!, picked.name);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot access file bytes to send')));
+                          return;
+                        }
+                      } else {
+                        final file = File(path);
+                        room = await state.startWebSend(file, picked.name);
+                      }
+                      // show QR with room link
+                      showDialog(context: context, builder: (_) => AlertDialog(
+                        title: const Text('Web Send — Share this QR'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            QrImageView(data: 'https://Reyaansh-Chat.onrender.com/?room=$room', size: 180),
+                            const SizedBox(height: 12),
+                            SelectableText('Room: $room')
+                          ],
+                        ),
+                        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+                      ));
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.input),
+                    label: const Text('Join Web Room'),
+                    onPressed: () {
+                      showDialog(context: context, builder: (_) {
+                        final ctrl = TextEditingController();
+                        return AlertDialog(
+                          title: const Text('Join Web Room'),
+                          content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: 'Enter room id')),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                            ElevatedButton(onPressed: () {
+                              final room = ctrl.text.trim();
+                              if (room.isNotEmpty) {
+                                context.read<AppState>().joinWebRoom(room);
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Joined room $room')));
+                              }
+                            }, child: const Text('Join')),
+                          ],
+                        );
+                      });
+                    },
                   ),
                 ),
               ],
