@@ -1,7 +1,9 @@
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
-    id("com.google.gms.google-services")
+    // NOTE: Do NOT apply the Google Services plugin here; apply it at the
+    // bottom of this file to avoid accessing the old
+    // `applicationVariants` API too early (causes AGP errors).
     // END: FlutterFire Configuration
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
@@ -53,3 +55,7 @@ flutter {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
+
+// Apply Google Services plugin after the Android plugin configuration
+// so it can safely access the Android extension APIs.
+apply(plugin = "com.google.gms.google-services")
