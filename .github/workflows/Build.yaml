@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    name: 🤖 Android Build & Release
+    name: 🌐 Web Build & Release
     runs-on: ubuntu-latest
 
     steps:
@@ -19,37 +19,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: ☕ Setup Java 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-
       - name: 🐦 Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: 🧰 Install Android SDK 36
-        run: |
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0"
-
       - name: 📦 Install dependencies
         run: flutter pub get
 
-      - name: 🤖 Build Android APK
+      - name: 🌐 Build Web Release
         run: |
-          flutter build apk \
-            --release \
+          flutter build web --release \
             --dart-define=NOTIFICATION_BACKEND_URL=https://Reyaansh-Chat.onrender.com
 
       - name: 📁 Prepare release artifacts
         run: |
           mkdir -p artifacts
-
-          cp build/app/outputs/flutter-apk/app-release.apk \
-             artifacts/Reyaansh-Chat-Android.apk
+          cd build/web
+          zip -r ../../artifacts/Reyaansh-Chat-Web.zip .
 
       - name: 🏷 Generate version tag
         id: version
@@ -69,7 +57,7 @@ jobs:
 
             if [[ "${parts[$last_index]}" =~ ^[0-9]+$ ]]; then
               parts[$last_index]=$(( parts[$last_index] + 1 ))
-              NEXT=$(IFS=.; echo "${parts[*]}")
+              NEXT=$(IFS='.'; echo "${parts[*]}")
             else
               NEXT="${LAST_TAG}.1"
             fi
@@ -95,4 +83,4 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           generate_release_notes: true
           files: |
-            artifacts/Reyaansh-Chat-Android.apk
+            artifacts/Reyaansh-Chat-Web.zip
