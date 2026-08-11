@@ -30,8 +30,11 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
-/coverage/
+# NOTE: `build/` is intentionally tracked for web deployment artifacts
+# (CI now produces `build/web` bundles that we keep in the repo).
+# Remove or comment the line below only if you want build outputs ignored.
+#/build/
+.coverage/
 
 # Symbolication related
 app.*.symbols
