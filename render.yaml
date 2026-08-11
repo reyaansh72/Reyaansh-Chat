@@ -1,8 +1,0 @@
-services:
-  - type: web
-    name: chat-notifications-backend
-    env: node
-    plan: starter
-    root: functions
-    buildCommand: npm install
-    startCommand: npm start
